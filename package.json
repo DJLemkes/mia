@@ -1,0 +1,17 @@
+{
+  "name": "bran",
+  "version": "0.1.0",
+  "description": "",
+  "main": "./index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.719.0",
+    "neo4j-driver": "4.1.1",
+    "p-limit": "3.0.2",
+    "prettier": "^2.0.5"
+  }
+}
