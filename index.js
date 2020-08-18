@@ -1,60 +1,57 @@
 const AWS = require("aws-sdk");
-const s3 = require("./src/api/aws/s3");
-const iam = require("./src/api/aws/iam");
-const lambda = require("./src/api/aws/lambda");
-const glue = require("./src/api/aws/glue");
-const dbNodes = require("./src/db/aws/nodes");
-const dbRelations = require("./src/db/aws/relations");
-const neo4j = require("neo4j-driver");
-const util = require("util");
+const inquirer = require("inquirer");
+const awsRun = require("./src/run/aws").run;
 
-(async () => {
-  const driver = neo4j.driver(
-    "neo4j://localhost",
-    neo4j.auth.basic("neo4j", "nff")
-  );
+const argv = require("yargs")
+  .alias("cf", "credentials-file")
+  .describe("cf", "Path to AWS credentials file")
+  .alias("p", "profile")
+  .describe("p", "Profile to use from AWS credentials file")
+  .alias("r", "region")
+  .describe("r", "List of regions to process")
+  .array("r")
+  .describe("approve", "Continue with credentials and regions without prompt")
+  .boolean("approve")
+  .default({ p: "default", approve: false })
+  .help("h")
+  .alias("h", "help").argv;
 
-  const session = driver.session({ defaultAccessMode: neo4j.session.WRITE });
-  const transaction = session.beginTransaction();
+const iniCredentials = new AWS.IniLoader().loadFrom(argv.cf);
+const regions = argv.r
+  ? argv.r
+  : iniCredentials[argv.p]
+  ? [iniCredentials[argv.p].region]
+  : ["eu-central-1"];
 
-  const buckets = await s3.fetchBuckets();
-  await dbNodes.upsertBuckets(transaction, buckets);
-
-  const policies = await iam.fetchPolicies();
-  await dbNodes.upsertPolicies(transaction, policies);
-  const allPolicyVersions = await iam.fetchPolicyVersions(
-    // policies.slice(0, 5).map((p) => p.Arn)
-    policies.map((p) => p.Arn)
-  );
-
-  await Promise.all(
-    allPolicyVersions.map((pv) =>
-      dbNodes.upsertPolicyVersions(transaction, pv.Arn, pv.Versions)
-    )
-  );
-
-  await dbRelations.setupPolicyPolicyVersionsRelations(transaction);
-  await dbRelations.setupPolicyBucketRelations(transaction);
-
-  const roles = await iam.fetchRoles();
-  await dbNodes.upsertRoles(transaction, roles);
-  await dbRelations.setupRolePolicyRelations(transaction, roles);
-  await dbRelations.setupRoleAllowsAssumeRelations(transaction);
-
-  const lambdaFunctions = await lambda.fetchLambdas();
-  await dbNodes.upsertLambdas(transaction, lambdaFunctions);
-  await dbRelations.setupLambdaRoleRelations(transaction);
-
-  const glueJobs = await glue.fetchGlueJobs();
-  await dbNodes.upsertGlueJobs(transaction, glueJobs);
-  await dbRelations.setupGlueJobRoleRelations(transaction);
-
-  // console.log(util.inspect(insertResult, false, null, true));
-  await transaction.commit();
-  session.close();
-  driver.close();
-  process.exit(0);
-})().catch((e) => {
-  console.log(`Error: ${e}`);
-  process.exit(1);
+const awsCredentials = new AWS.SharedIniFileCredentials({
+  profile: argv.p,
 });
+
+const dbCredentials = {
+  host: "neo4j://localhost",
+  user: "neo4j",
+  password: "neo4j",
+};
+
+const program = argv.approve
+  ? Promise.resolve(awsRun(awsCredentials, regions, dbCredentials))
+  : inquirer
+      .prompt([
+        {
+          type: "confirm",
+          message:
+            `Going to use access key Id ${awsCredentials.accessKeyId} ` +
+            `from profile ${argv.p} in regions ${regions}`,
+          name: "proceed",
+        },
+      ])
+      .then(({ proceed }) => {
+        if (proceed) {
+          return run(awsCredentials, regions);
+        } else {
+          console.log("Exiting...");
+          return Promise.resolve();
+        }
+      });
+
+program.then(() => process.exit(0));

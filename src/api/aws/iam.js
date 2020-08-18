@@ -12,7 +12,7 @@ async function fetchPolicies() {
 async function fetchPolicyVersions(policyArns = []) {
   const iam = new AWS.IAM();
   const listLimit = pLimit(10);
-  const detailLimit = pLimit(10);
+  const detailLimit = pLimit(20);
 
   const singlePolicyVersionListing = (arn) =>
     traverseAllPages(

@@ -2,9 +2,11 @@ const AWS = require("aws-sdk");
 const { timeAndCount, traverseAllPages } = require("./utils");
 
 async function fetchLambdas() {
-  const lambda = new AWS.Lambda({ region: "eu-central-1" });
+  const lambda = new AWS.Lambda();
 
   return traverseAllPages(lambda.listFunctions(), "Functions");
 }
 
-module.exports = { fetchLambdas: timeAndCount(fetchLambdas, "Lambdas") };
+module.exports = {
+  fetchLambdas: timeAndCount(fetchLambdas, "Lambdas"),
+};
