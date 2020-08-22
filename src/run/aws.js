@@ -1,5 +1,6 @@
 const AWS = require("aws-sdk");
 const neo4j = require("neo4j-driver");
+const pLimit = require("p-limit");
 const s3 = require("../api/aws/s3");
 const iam = require("../api/aws/iam");
 const lambda = require("../api/aws/lambda");

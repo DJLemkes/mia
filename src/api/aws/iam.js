@@ -40,9 +40,9 @@ async function fetchPolicyVersions(policyArns = []) {
   return Promise.all(
     policyArns.map((arn) =>
       listLimit(async () => {
-        // console.debug(`Listing versions for arn ${arn}`);
+        console.debug(`Listing versions for arn ${arn}`);
         const policyVersions = await singlePolicyVersionListing(arn);
-        // console.debug(`Fetching details for ${arn} and ${policyVersions}`);
+        console.debug(`Fetching details for ${arn} and ${policyVersions}`);
         const fullPolicyVersions = await versionDetails(arn, policyVersions);
         return { Arn: arn, Versions: fullPolicyVersions };
       })

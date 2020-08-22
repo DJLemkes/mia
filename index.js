@@ -1,6 +1,6 @@
 const AWS = require("aws-sdk");
 const inquirer = require("inquirer");
-const awsRun = require("./src/run/aws").run;
+const awsRun = require("./src/run/aws");
 
 const argv = require("yargs")
   .alias("cf", "credentials-file")
@@ -34,7 +34,7 @@ const dbCredentials = {
 };
 
 const program = argv.approve
-  ? Promise.resolve(awsRun(awsCredentials, regions, dbCredentials))
+  ? Promise.resolve(awsRun.run(awsCredentials, regions, dbCredentials))
   : inquirer
       .prompt([
         {
@@ -47,11 +47,16 @@ const program = argv.approve
       ])
       .then(({ proceed }) => {
         if (proceed) {
-          return run(awsCredentials, regions);
+          return awsRun.run(awsCredentials, regions, dbCredentials);
         } else {
           console.log("Exiting...");
           return Promise.resolve();
         }
       });
 
-program.then(() => process.exit(0));
+program
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

@@ -1,7 +1,4 @@
-const util = require("util");
 const { DateTime } = require("neo4j-driver/lib/temporal-types");
-
-const neoDate = require("neo4j-driver/lib/temporal-types").DateTime;
 
 async function upsertBuckets(transaction, buckets) {
   buckets.forEach((b) => {

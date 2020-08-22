@@ -6,6 +6,8 @@ const {
   allowedAWSRoles,
 } = require("./policyDocUtils");
 
+const cypherActionRegex = (awsAction) => awsAction.replace("*", ".*");
+
 async function setupPolicyPolicyVersionsRelations(transaction) {
   return transaction.run(
     `MATCH (pv:PolicyVersion)
@@ -29,23 +31,33 @@ async function setupPolicyBucketRelations(transaction) {
 
     const s3BucketStatements = policyDoc.Statement.reduce((acc, s) => {
       if (typeof s.Resource === "string" && isS3Resource(s.Resource)) {
+        actions = [s.Action].flat().map((a) => ({
+          action: a,
+          regexAction: cypherActionRegex(a),
+        }));
         return acc.concat({
           ...s,
-          actions: [s.Action].flat(),
+          actions,
           policyArn,
           resourceArnRegex: cypherS3ArnRegex(s.Resource),
           policyDocumentVersionId: docVersion,
         });
       } else if (Array.isArray(s.Resource)) {
         const perResourceStatements = s.Resource.filter(isS3Resource).map(
-          (r) => ({
-            ...s,
-            actions: [s.Action].flat(),
-            Resource: r,
-            policyArn,
-            resourceArnRegex: cypherS3ArnRegex(r),
-            policyDocumentVersionId: docVersion,
-          })
+          (r) => {
+            actions = [s.Action].flat().map((a) => ({
+              action: a,
+              regexAction: cypherActionRegex(a),
+            }));
+            return {
+              ...s,
+              actions,
+              Resource: r,
+              policyArn,
+              resourceArnRegex: cypherS3ArnRegex(r),
+              policyDocumentVersionId: docVersion,
+            };
+          }
         );
         return acc.concat(perResourceStatements);
       } else {
@@ -62,7 +74,7 @@ async function setupPolicyBucketRelations(transaction) {
         `
             MATCH (b:Bucket) WHERE b.arn =~ $resourceArnRegex
             MATCH (pv:PolicyVersion) WHERE pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn
-            UNWIND $actions as a MERGE (pv)-[:HAS_PERMISSION {action: a}]-(b)
+            UNWIND $actions as a MERGE (pv)-[:HAS_PERMISSION {action: a.action, regexAction: a.regexAction}]-(b)
             `,
         ptp
       )
