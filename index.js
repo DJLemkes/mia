@@ -1,5 +1,6 @@
 const AWS = require("aws-sdk");
 const inquirer = require("inquirer");
+const debug = require("debug");
 const awsRun = require("./src/run/aws");
 
 const argv = require("yargs")
@@ -12,9 +13,13 @@ const argv = require("yargs")
   .array("r")
   .describe("approve", "Continue with credentials and regions without prompt")
   .boolean("approve")
+  .describe("v", "verbose")
+  .boolean("verbose")
   .default({ p: "default", approve: false })
   .help("h")
   .alias("h", "help").argv;
+
+if (argv.v) debug.enable("*");
 
 const iniCredentials = new AWS.IniLoader().loadFrom(argv.cf);
 const regions = argv.r

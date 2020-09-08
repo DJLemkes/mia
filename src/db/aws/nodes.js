@@ -1,11 +1,12 @@
 const { DateTime } = require("neo4j-driver/lib/temporal-types");
+const nodeLabels = require("./constants").nodeLabels;
 
 async function upsertBuckets(transaction, buckets) {
   buckets.forEach((b) => {
     b.createdAt = DateTime.fromStandardDate(b.CreationDate);
   });
   return transaction.run(
-    `UNWIND $buckets AS b MERGE(:Bucket {arn: b.Arn, name: b.Name, createdAt: b.createdAt})`,
+    `UNWIND $buckets AS b MERGE(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.BUCKET} {arn: b.Arn, name: b.Name, createdAt: b.createdAt})`,
     { buckets }
   );
 }
@@ -17,7 +18,8 @@ async function upsertPolicies(transaction, policies) {
   });
   return transaction.run(
     "UNWIND $policies as p MERGE " +
-      "(:Policy {arn: p.Arn, name: p.PolicyName, id: p.PolicyId, createdAt: p.createdAt, updatedAt: p.updatedAt})",
+      `(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY} ` +
+      "{arn: p.Arn, name: p.PolicyName, id: p.PolicyId, createdAt: p.createdAt, updatedAt: p.updatedAt})",
     { policies }
   );
 }
@@ -30,7 +32,7 @@ async function upsertPolicyVersions(transaction, policyArn, policyVersions) {
   });
   return transaction.run(
     "UNWIND $policyVersions as pv MERGE " +
-      "(:PolicyVersion " +
+      `(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY_VERSION} ` +
       "{document: pv.document, policyArn: $policyArn, versionId: pv.VersionId, " +
       "versionNumber: pv.versionNumber, isDefault: pv.IsDefaultVersion, " +
       "createdAt: pv.createdAt})",
@@ -45,7 +47,8 @@ async function upsertLambdas(transaction, lambdas) {
 
   const insertResults = await transaction.run(
     "UNWIND $lambdas as l " +
-      "MERGE (:Lambda {name: l.FunctionName, arn: l.FunctionArn, modifiedAt: l.modifiedAt, roleArn: l.Role, revisionId: l.RevisionId})",
+      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.LAMBDA} ` +
+      "{name: l.FunctionName, arn: l.FunctionArn, modifiedAt: l.modifiedAt, roleArn: l.Role, revisionId: l.RevisionId})",
     { lambdas }
   );
 
@@ -59,7 +62,7 @@ async function upsertRoles(transaction, roles) {
   });
   return await transaction.run(
     "UNWIND $roles as r " +
-      "MERGE (:Role {arn: r.Arn, name: r.RoleName, id: r.RoleId, " +
+      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.ROLE} {arn: r.Arn, name: r.RoleName, id: r.RoleId, ` +
       "createdAt: r.createdAt, assumeRolePolicyDocument: r.assumeRolePolicyDoc})",
     {
       roles,
@@ -74,7 +77,7 @@ async function upsertGlueJobs(transaction, jobs) {
   });
   return await transaction.run(
     "UNWIND $jobs as j " +
-      "MERGE (:GlueJob {name: j.Name, createdAt: j.createdAt, updatedAt: j.updatedAt, roleArn: j.Role})",
+      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.GLUE_JOB} {name: j.Name, createdAt: j.createdAt, updatedAt: j.updatedAt, roleArn: j.Role})`,
     { jobs }
   );
 }

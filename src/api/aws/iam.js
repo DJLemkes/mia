@@ -1,5 +1,6 @@
 const AWS = require("aws-sdk");
 const pLimit = require("p-limit");
+const debug = require("debug")("aws:iam");
 const url = require("url");
 const { traverseAllPages, timeAndCount } = require("./utils");
 
@@ -40,9 +41,9 @@ async function fetchPolicyVersions(policyArns = []) {
   return Promise.all(
     policyArns.map((arn) =>
       listLimit(async () => {
-        console.debug(`Listing versions for arn ${arn}`);
+        debug(`Listing versions for arn ${arn}`);
         const policyVersions = await singlePolicyVersionListing(arn);
-        console.debug(`Fetching details for ${arn} and ${policyVersions}`);
+        debug(`Fetching details for ${arn} and ${policyVersions}`);
         const fullPolicyVersions = await versionDetails(arn, policyVersions);
         return { Arn: arn, Versions: fullPolicyVersions };
       })

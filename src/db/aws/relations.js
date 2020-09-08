@@ -5,12 +5,13 @@ const {
   allowedUsers,
   allowedAWSRoles,
 } = require("./policyDocUtils");
+const nodeLabels = require("./constants").nodeLabels;
 
 const cypherActionRegex = (awsAction) => awsAction.replace("*", ".*");
 
 async function setupPolicyPolicyVersionsRelations(transaction) {
   return transaction.run(
-    `MATCH (pv:PolicyVersion)
+    `MATCH (pv:${nodeLabels.POLICY_VERSION})
        MATCH (p:Policy)
        WHERE p.arn = pv.policyArn
        MERGE (p)-[:HAS]->(pv)`
@@ -20,7 +21,7 @@ async function setupPolicyPolicyVersionsRelations(transaction) {
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html
 async function setupPolicyBucketRelations(transaction) {
   const policyVersions = await transaction.run(
-    "MATCH (pv:PolicyVersion) RETURN pv.versionId AS versionId, pv.policyArn AS policyArn, pv.document AS document"
+    `MATCH (pv:${nodeLabels.POLICY_VERSION}) RETURN pv.versionId AS versionId, pv.policyArn AS policyArn, pv.document AS document`
   );
   // WHERE pv.isDefault = true
 
@@ -72,8 +73,8 @@ async function setupPolicyBucketRelations(transaction) {
     statementsToProcess.map((ptp) =>
       transaction.run(
         `
-            MATCH (b:Bucket) WHERE b.arn =~ $resourceArnRegex
-            MATCH (pv:PolicyVersion) WHERE pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn
+            MATCH (b:${nodeLabels.BUCKET}) WHERE b.arn =~ $resourceArnRegex
+            MATCH (pv:${nodeLabels.POLICY_VERSION}) WHERE pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn
             UNWIND $actions as a MERGE (pv)-[:HAS_PERMISSION {action: a.action, regexAction: a.regexAction}]-(b)
             `,
         ptp
@@ -85,8 +86,8 @@ async function setupPolicyBucketRelations(transaction) {
 async function setupLambdaRoleRelations(transaction) {
   return await transaction.run(
     `
-      MATCH (l:Lambda) 
-      MATCH (r:Role) WHERE r.arn = l.roleArn
+      MATCH (l:${nodeLabels.LAMBDA}) 
+      MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = l.roleArn
       MERGE (l)-[:HAS]->(r)
       `
   );
@@ -99,8 +100,8 @@ async function setupRolePolicyRelations(transaction, roleAndPolicies) {
         role.attachedPolicies.map((ap) =>
           transaction.run(
             `
-              MATCH (r:Role) WHERE r.arn = $roleArn
-              MATCH (p:Policy) WHERE p.arn = $policyArn
+              MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = $roleArn
+              MATCH (p:${nodeLabels.POLICY}) WHERE p.arn = $policyArn
               MERGE (r)-[:HAS]->(p)
               `,
             { roleArn: role.Arn, policyArn: ap.PolicyArn }
@@ -116,8 +117,8 @@ async function setupRolePolicyRelations(transaction, roleAndPolicies) {
 async function setupGlueJobRoleRelations(transaction) {
   return transaction.run(
     `
-      MATCH (gj:GlueJob) 
-      MATCH (r:Role) WHERE r.arn = gj.roleArn
+      MATCH (gj:${nodeLabels.GLUE_JOB}) 
+      MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = gj.roleArn
       MERGE (gj)-[:HAS]->(r)
       `
   );
@@ -125,7 +126,7 @@ async function setupGlueJobRoleRelations(transaction) {
 
 async function setupRoleAllowsAssumeRelations(transaction) {
   const roles = await transaction.run(
-    "MATCH (r:Role) WHERE r.assumeRolePolicyDocument <> '' RETURN r.arn AS arn, r.assumeRolePolicyDocument as doc"
+    `MATCH (r:${nodeLabels.ROLE}) WHERE r.assumeRolePolicyDocument <> '' RETURN r.arn AS arn, r.assumeRolePolicyDocument as doc`
   );
 
   const rolesToProcess = roles.records.reduce((acc, r) => {
@@ -168,8 +169,8 @@ async function setupRoleAllowsAssumeRelations(transaction) {
   const serviceLink = (roleArn, serviceName) =>
     transaction.run(
       `
-      MATCH (s:AWSService {awsName: $serviceName})
-      MATCH (r:Role) WHERE r.arn = $roleArn
+      MATCH (s:${nodeLabels.AWS_SERVICE} {awsName: $serviceName})
+      MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = $roleArn
       MERGE (s)-[:CAN_ASSUME]->(r)
       `,
       { roleArn, serviceName }
@@ -178,8 +179,8 @@ async function setupRoleAllowsAssumeRelations(transaction) {
   const accountLink = (roleArn, accountArn) =>
     transaction.run(
       `
-      MATCH (s:AWSAccount {arn: $accountArn})
-      MATCH (r:Role) WHERE r.arn = $roleArn
+      MATCH (s:${nodeLabels.AWS_ACCOUNT} {arn: $accountArn})
+      MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = $roleArn
       MERGE (s)-[:CAN_ASSUME]->(r)
       `,
       { roleArn, accountArn }
@@ -188,8 +189,8 @@ async function setupRoleAllowsAssumeRelations(transaction) {
   const userLink = (roleArn, userArn) =>
     transaction.run(
       `
-      MATCH (s:AWSUser {arn: $userArn})
-      MATCH (r:Role) WHERE r.arn = $roleArn
+      MATCH (s:${nodeLabels.AWS_USER} {arn: $userArn})
+      MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = $roleArn
       MERGE (s)-[:CAN_ASSUME]->(r)
       `,
       { roleArn, userArn }
@@ -198,8 +199,8 @@ async function setupRoleAllowsAssumeRelations(transaction) {
   const roleLink = (roleArn, sourceRoleArn) =>
     transaction.run(
       `
-      MATCH (s:Role {arn: $sourceRoleArn})
-      MATCH (r:Role) WHERE r.arn = $roleArn
+      MATCH (s:${nodeLabels.ROLE} {arn: $sourceRoleArn})
+      MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = $roleArn
       MERGE (s)-[:CAN_ASSUME]->(r)
       `,
       { roleArn, sourceRoleArn }

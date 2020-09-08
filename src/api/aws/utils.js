@@ -1,18 +1,34 @@
 const util = require("util");
+const ora = require("ora");
 
 const timeAndCount = (
   fn,
   resourceNamePlural,
   resultCounter = (result) => result.length
 ) => async (...fnArgs) => {
-  console.log(`Fetching ${resourceNamePlural}...`);
+  const debug = require("debug")("");
+
+  const startMessage = `Fetching ${resourceNamePlural}...`;
+  let spinner;
+  if (debug.enabled) {
+    console.log(startMessage);
+  } else {
+    spinner = ora(`Fetching ${resourceNamePlural}...`).start();
+  }
+
   const start = new Date();
   const results = await fn(...fnArgs);
-  console.log(
-    `Fetched ${resultCounter(results)} ${resourceNamePlural} in ${
-      new Date() - start
-    }ms`
-  );
+
+  const stopMessage = `Fetched ${resultCounter(
+    results
+  )} ${resourceNamePlural} in ${new Date() - start}ms`;
+
+  if (debug.enabled) {
+    console.log(stopMessage);
+  } else {
+    spinner.succeed(stopMessage);
+  }
+
   return results;
 };
 
