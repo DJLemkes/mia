@@ -46,7 +46,7 @@ const program = argv.approve
           type: "confirm",
           message:
             `Going to use access key Id ${awsCredentials.accessKeyId} ` +
-            `from profile ${argv.p} in regions ${regions}`,
+            `from profile ${argv.p} in region(s) ${regions}`,
           name: "proceed",
         },
       ])

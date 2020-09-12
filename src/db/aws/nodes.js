@@ -18,7 +18,7 @@ async function upsertPolicies(transaction, policies) {
   });
   return transaction.run(
     "UNWIND $policies as p MERGE " +
-      `(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY} ` +
+      `(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY}:${nodeLabels.CUSTOMER_MANAGED_POLICY} ` +
       "{arn: p.Arn, name: p.PolicyName, id: p.PolicyId, createdAt: p.createdAt, updatedAt: p.updatedAt})",
     { policies }
   );
@@ -40,19 +40,22 @@ async function upsertPolicyVersions(transaction, policyArn, policyVersions) {
   );
 }
 
-async function upsertLambdas(transaction, lambdas) {
-  lambdas.forEach((l) => {
-    l.modifiedAt = DateTime.fromStandardDate(new Date(l.LastModified));
+async function upsertInlineRolePolicies(transaction, inlinePolicies) {
+  inlinePolicies.forEach((ip) => {
+    ip.PolicyDocument = JSON.stringify(ip.PolicyDocument);
   });
-
-  const insertResults = await transaction.run(
-    "UNWIND $lambdas as l " +
-      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.LAMBDA} ` +
-      "{name: l.FunctionName, arn: l.FunctionArn, modifiedAt: l.modifiedAt, roleArn: l.Role, revisionId: l.RevisionId})",
-    { lambdas }
+  return await transaction.run(
+    `UNWIND $inlinePolicies as ip
+     MERGE (
+       :${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY}:${nodeLabels.INLINE_POLICY} 
+       {name: ip.inlinePolicyName, roleName: ip.roleName}
+     )
+     MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY_VERSION} 
+       {document: ip.PolicyDocument, isDefault: true, policyName: ip.inlinePolicyName}
+     )
+    `,
+    { inlinePolicies }
   );
-
-  return insertResults;
 }
 
 async function upsertRoles(transaction, roles) {
@@ -68,6 +71,21 @@ async function upsertRoles(transaction, roles) {
       roles,
     }
   );
+}
+
+async function upsertLambdas(transaction, lambdas) {
+  lambdas.forEach((l) => {
+    l.modifiedAt = DateTime.fromStandardDate(new Date(l.LastModified));
+  });
+
+  const insertResults = await transaction.run(
+    "UNWIND $lambdas as l " +
+      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.LAMBDA} ` +
+      "{name: l.FunctionName, arn: l.FunctionArn, modifiedAt: l.modifiedAt, roleArn: l.Role, revisionId: l.RevisionId})",
+    { lambdas }
+  );
+
+  return insertResults;
 }
 
 async function upsertGlueJobs(transaction, jobs) {
@@ -89,4 +107,5 @@ module.exports = {
   upsertLambdas,
   upsertRoles,
   upsertGlueJobs,
+  upsertInlineRolePolicies,
 };

@@ -75,6 +75,47 @@ async function fetchRoles() {
   );
 }
 
+async function fetchInlineRolePolicies(roleNames) {
+  const iam = new AWS.IAM();
+  const policyNameLimit = pLimit(20);
+  const policyDetailLimit = pLimit(20);
+
+  const rolesAndInlincePolicyNames = await Promise.all(
+    roleNames.map((roleName) =>
+      policyNameLimit(() =>
+        traverseAllPages(
+          iam.listRolePolicies({ RoleName: roleName }),
+          "PolicyNames"
+        ).then((inlineRolePolicyNames) =>
+          inlineRolePolicyNames.map((inlinePolicyName) => ({
+            roleName,
+            inlinePolicyName,
+          }))
+        )
+      )
+    )
+  ).then((irp) => irp.flat());
+
+  return Promise.all(
+    rolesAndInlincePolicyNames.map((roleAndInlineName) =>
+      policyDetailLimit(() =>
+        iam
+          .getRolePolicy({
+            RoleName: roleAndInlineName.roleName,
+            PolicyName: roleAndInlineName.inlinePolicyName,
+          })
+          .promise()
+          .then((response) => ({
+            ...roleAndInlineName,
+            PolicyDocument: JSON.parse(
+              decodeURIComponent(response.PolicyDocument)
+            ),
+          }))
+      )
+    )
+  );
+}
+
 module.exports = {
   fetchPolicies: timeAndCount(fetchPolicies, "IAM Policies"),
   fetchRoles: timeAndCount(fetchRoles, "IAM Roles"),
@@ -82,5 +123,9 @@ module.exports = {
     fetchPolicyVersions,
     "IAM Policy versions",
     (result) => result.reduce((acc, r) => acc + r.Versions.length, 0)
+  ),
+  fetchInlineRolePolicies: timeAndCount(
+    fetchInlineRolePolicies,
+    "IAM inline role policies"
   ),
 };

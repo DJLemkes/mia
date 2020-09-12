@@ -12,8 +12,8 @@ const cypherActionRegex = (awsAction) => awsAction.replace("*", ".*");
 async function setupPolicyPolicyVersionsRelations(transaction) {
   return transaction.run(
     `MATCH (pv:${nodeLabels.POLICY_VERSION})
-       MATCH (p:Policy)
-       WHERE p.arn = pv.policyArn
+       MATCH (p:${nodeLabels.POLICY})
+       WHERE p.arn = pv.policyArn OR p.name = pv.policyName
        MERGE (p)-[:HAS]->(pv)`
   );
 }
@@ -21,13 +21,14 @@ async function setupPolicyPolicyVersionsRelations(transaction) {
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html
 async function setupPolicyBucketRelations(transaction) {
   const policyVersions = await transaction.run(
-    `MATCH (pv:${nodeLabels.POLICY_VERSION}) RETURN pv.versionId AS versionId, pv.policyArn AS policyArn, pv.document AS document`
+    `MATCH (pv:${nodeLabels.POLICY_VERSION}) 
+    RETURN pv.versionId AS versionId, pv.policyArn AS policyArn, pv.document AS document, pv.policyName AS policyName`
   );
-  // WHERE pv.isDefault = true
 
   const statementsToProcess = policyVersions.records.flatMap((r) => {
     const policyDoc = JSON.parse(r.get("document"));
     const policyArn = r.get("policyArn");
+    const policyName = r.get("policyName");
     const docVersion = r.get("versionId");
 
     const s3BucketStatements = policyDoc.Statement.reduce((acc, s) => {
@@ -40,6 +41,7 @@ async function setupPolicyBucketRelations(transaction) {
           ...s,
           actions,
           policyArn,
+          policyName,
           resourceArnRegex: cypherS3ArnRegex(s.Resource),
           policyDocumentVersionId: docVersion,
         });
@@ -55,6 +57,7 @@ async function setupPolicyBucketRelations(transaction) {
               actions,
               Resource: r,
               policyArn,
+              policyName,
               resourceArnRegex: cypherS3ArnRegex(r),
               policyDocumentVersionId: docVersion,
             };
@@ -70,14 +73,14 @@ async function setupPolicyBucketRelations(transaction) {
   });
 
   const linkResults = await Promise.all(
-    statementsToProcess.map((ptp) =>
+    statementsToProcess.map((stp) =>
       transaction.run(
         `
-            MATCH (b:${nodeLabels.BUCKET}) WHERE b.arn =~ $resourceArnRegex
-            MATCH (pv:${nodeLabels.POLICY_VERSION}) WHERE pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn
-            UNWIND $actions as a MERGE (pv)-[:HAS_PERMISSION {action: a.action, regexAction: a.regexAction}]-(b)
-            `,
-        ptp
+        MATCH (pv:${nodeLabels.POLICY_VERSION}) WHERE (pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn) OR pv.policyName = $policyName
+        MATCH (b:${nodeLabels.BUCKET}) WHERE b.arn =~ $resourceArnRegex
+        UNWIND $actions as a MERGE (pv)-[:HAS_PERMISSION {action: a.action, regexAction: a.regexAction}]-(b)
+        `,
+        stp
       )
     )
   );
@@ -101,7 +104,7 @@ async function setupRolePolicyRelations(transaction, roleAndPolicies) {
           transaction.run(
             `
               MATCH (r:${nodeLabels.ROLE}) WHERE r.arn = $roleArn
-              MATCH (p:${nodeLabels.POLICY}) WHERE p.arn = $policyArn
+              MATCH (p:${nodeLabels.CUSTOMER_MANAGED_POLICY}) WHERE p.arn = $policyArn
               MERGE (r)-[:HAS]->(p)
               `,
             { roleArn: role.Arn, policyArn: ap.PolicyArn }
@@ -111,6 +114,15 @@ async function setupRolePolicyRelations(transaction, roleAndPolicies) {
     })
   );
 
+  await transaction.run(
+    `
+    MATCH (r:${nodeLabels.ROLE})
+    MATCH (p:${nodeLabels.INLINE_POLICY}) WHERE p.roleName = r.name
+    MERGE (r)-[:HAS]->(p)
+    `
+  );
+
+  // Return value doesn't really make sense here anymore because it is not all we did.
   return insertResults;
 }
 
