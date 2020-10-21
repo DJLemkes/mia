@@ -1,4 +1,5 @@
-nodeLabels = {
+export const nodeLabels = {
+  AWS_ACCOUNT: "AWSAccount",
   AWS_RESOURCE: "AWSResource",
   AWS_SERVICE: "AWSService",
   AWS_USER: "AWSUser",
@@ -11,6 +12,4 @@ nodeLabels = {
   AWS_MANAGED_POLICY: "AWSManagedPolicy",
   CUSTOMER_MANAGED_POLICY: "CustomerManagedPolicy",
   POLICY_VERSION: "PolicyVersion",
-};
-
-module.exports = { nodeLabels };
+}
