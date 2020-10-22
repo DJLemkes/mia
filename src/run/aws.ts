@@ -7,8 +7,8 @@ import iam from "../api/aws/iam"
 import lambda from "../api/aws/lambda"
 import glue from "../api/aws/glue"
 import dbNodes from "../db/aws/nodes"
-import dbRelations from "../db/aws/relations"
 import { filterUndefined } from "../utils"
+import dbRelations from "../db/aws/relations"
 
 export async function run(awsCredentials, regions, dbCredentials) {
   AWS.config.credentials = awsCredentials

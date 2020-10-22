@@ -96,9 +96,13 @@ const Principal = t.type({
 
 export type Principal = t.TypeOf<typeof Principal>
 
+const Effect = t.union([t.literal("Allow"), t.literal("Deny")])
+
+export type Effect = t.TypeOf<typeof Effect>
+
 const PolicyStatement = t.type(
   {
-    Effect: t.string,
+    Effect: t.readonly(Effect),
     Resource: IAMArray(IAMArn),
     NotResource: IAMArray(IAMArn),
     Action: IAMArray(Action),
@@ -110,8 +114,12 @@ const PolicyStatement = t.type(
 
 export type PolicyStatement = t.TypeOf<typeof PolicyStatement>
 
+const Version = t.union([t.literal("2012-10-17"), t.literal("2008-10-17")])
+
+export type Version = t.TypeOf<typeof Version>
+
 export const PolicyDoc = t.type({
-  Version: t.readonly(t.string),
+  Version: t.readonly(Version),
   Statement: IAMArray(PolicyStatement),
 })
 
@@ -126,11 +134,11 @@ export const allowedPrincipals = (
         s.Effect === "Allow" &&
         s.Action.find((a) => a.service === "sts" && a.action === "AssumeRole")
       ) {
-        const foo = accessor(s.Principal).map((principal) => ({
+        const allowedAssume = accessor(s.Principal).map((principal) => ({
           roleArn,
           allowedAssume: principal,
         }))
-        return acc.concat(foo)
+        return acc.concat(allowedAssume)
       } else {
         return acc
       }
@@ -138,51 +146,27 @@ export const allowedPrincipals = (
     []
   )
 
-// export const allowedPrincipals = (principalKey: string) => (
-//   assumeRolePolicyDoc: PolicyDoc,
-//   roleArn: string
-// ) => {
-//   // Statement may be null
-//   // const betterPolicyDoc = { Statement: [], ...assumeRolePolicyDoc }
-
-//   return assumeRolePolicyDoc.Statement.reduce((acc, s: PolicyStatement) => {
-//     if (
-//       s.Effect === "Allow" &&
-//       s.Action === "sts:AssumeRole" &&
-//       s.Principal[principalKey]
-//     ) {
-//       const principals: Array<string> = Array.isArray(s.Principal[principalKey])
-//         ? s.Principal[principalKey]
-//         : [s.Principal[principalKey]]
-//       return acc.concat(
-//         principals.map((principal) => ({
-//           roleArn,
-//           allowedAssume: principal,
-//         }))
-//       )
-//     } else {
-//       return acc
-//     }
-//   }, [])
-// }
-
-// export const allowedServices = allowedPrincipals("Service")
 export const allowedServices = allowedPrincipals((p) => p.Service)
 
-// export const allowedARNs = allowedPrincipals("AWS")
 const allowedARNs = allowedPrincipals((p) => p.AWS)
 
-export const allowedAWSAccounts = (assumeRolePolicyDoc, roleArn: string) =>
+export const allowedAWSAccounts = (
+  assumeRolePolicyDoc: PolicyDoc,
+  roleArn: string
+) =>
   allowedARNs(assumeRolePolicyDoc, roleArn).filter((elem) =>
     isAWSAccount(elem.allowedAssume)
   )
 
-export const allowedAWSRoles = (assumeRolePolicyDoc, roleArn: string) =>
+export const allowedAWSRoles = (
+  assumeRolePolicyDoc: PolicyDoc,
+  roleArn: string
+) =>
   allowedARNs(assumeRolePolicyDoc, roleArn).filter((elem) =>
     isRole(elem.allowedAssume)
   )
 
-export const allowedUsers = (assumeRolePolicyDoc, roleArn: string) =>
+export const allowedUsers = (assumeRolePolicyDoc: PolicyDoc, roleArn: string) =>
   allowedARNs(assumeRolePolicyDoc, roleArn).filter((elem) =>
     isUser(elem.allowedAssume)
   )

@@ -1,6 +1,6 @@
 import { Transaction } from "neo4j-driver"
 import { DateTime } from "neo4j-driver/lib/temporal-types"
-import { nodeLabels } from "./constants"
+import { NodeLabel } from "./constants"
 
 type DbS3Bucket = {
   Arn: string
@@ -10,7 +10,7 @@ type DbS3Bucket = {
 
 async function upsertBuckets(transaction: Transaction, buckets: DbS3Bucket[]) {
   return transaction.run(
-    `UNWIND $buckets AS b MERGE(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.BUCKET} {arn: b.Arn, name: b.Name, createdAt: b.createdAt})`,
+    `UNWIND $buckets AS b MERGE(:${NodeLabel.AWS_RESOURCE}:${NodeLabel.BUCKET} {arn: b.Arn, name: b.Name, createdAt: b.createdAt})`,
     {
       buckets: buckets.map((b) => ({
         createdAt: DateTime.fromStandardDate(b.CreationDate),
@@ -34,7 +34,7 @@ async function upsertPolicies(
 ) {
   return transaction.run(
     "UNWIND $policies as p MERGE " +
-      `(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY}:${nodeLabels.CUSTOMER_MANAGED_POLICY} ` +
+      `(:${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY}:${NodeLabel.CUSTOMER_MANAGED_POLICY} ` +
       "{arn: p.Arn, name: p.PolicyName, id: p.PolicyId, createdAt: p.createdAt, updatedAt: p.updatedAt})",
     {
       policies: policies.map((p) => ({
@@ -60,7 +60,7 @@ async function upsertPolicyVersions(
 ) {
   return transaction.run(
     "UNWIND $policyVersions as pv MERGE " +
-      `(:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY_VERSION} ` +
+      `(:${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY_VERSION} ` +
       "{document: pv.document, policyArn: $policyArn, versionId: pv.VersionId, " +
       "versionNumber: pv.versionNumber, isDefault: pv.IsDefaultVersion, " +
       "createdAt: pv.createdAt})",
@@ -91,10 +91,10 @@ async function upsertInlineRolePolicies(
   return await transaction.run(
     `UNWIND $inlinePolicies as ip
      MERGE (
-       :${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY}:${nodeLabels.INLINE_POLICY} 
+       :${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY}:${NodeLabel.INLINE_POLICY} 
        {name: ip.inlinePolicyName, roleName: ip.roleName}
      )
-     MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.POLICY_VERSION} 
+     MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY_VERSION} 
        {document: ip.PolicyDocument, isDefault: true, policyName: ip.inlinePolicyName}
      )
     `,
@@ -117,7 +117,7 @@ type DbIAMRole = {
 async function upsertRoles(transaction: Transaction, roles: DbIAMRole[]) {
   return await transaction.run(
     "UNWIND $roles as r " +
-      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.ROLE} {arn: r.Arn, name: r.RoleName, id: r.RoleId, ` +
+      `MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.ROLE} {arn: r.Arn, name: r.RoleName, id: r.RoleId, ` +
       "createdAt: r.createdAt, assumeRolePolicyDocument: r.assumeRolePolicyDoc})",
     {
       roles: roles.map((r) => ({
@@ -140,7 +140,7 @@ type DbLambda = {
 async function upsertLambdas(transaction: Transaction, lambdas: DbLambda[]) {
   const insertResults = await transaction.run(
     "UNWIND $lambdas as l " +
-      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.LAMBDA} ` +
+      `MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.LAMBDA} ` +
       "{name: l.FunctionName, arn: l.FunctionArn, modifiedAt: l.modifiedAt, roleArn: l.Role, revisionId: l.RevisionId})",
     {
       lambdas: lambdas.map((l) => ({
@@ -164,7 +164,7 @@ type DbGlueJob = {
 async function upsertGlueJobs(transaction: Transaction, jobs: DbGlueJob[]) {
   return await transaction.run(
     "UNWIND $jobs as j " +
-      `MERGE (:${nodeLabels.AWS_RESOURCE}:${nodeLabels.GLUE_JOB} {name: j.Name, createdAt: j.createdAt, updatedAt: j.updatedAt, roleArn: j.Role})`,
+      `MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.GLUE_JOB} {name: j.Name, createdAt: j.createdAt, updatedAt: j.updatedAt, roleArn: j.Role})`,
     {
       jobs: jobs.map((j) => ({
         createdAt: DateTime.fromStandardDate(j.CreatedOn),
