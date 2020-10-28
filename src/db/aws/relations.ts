@@ -1,4 +1,4 @@
-import { isS3Resource, cypherS3ArnRegex } from "./arnUtils"
+import { cypherS3ArnRegex } from "./arnUtils"
 import {
   allowedServices,
   allowedAWSAccounts,
@@ -6,6 +6,8 @@ import {
   allowedAWSRoles,
   PolicyDoc,
   Action,
+  IAMArn,
+  PolicyStatement,
 } from "./policyDocUtils"
 import { isRight } from "fp-ts/lib/Either"
 import { NodeLabel } from "./constants"
@@ -28,56 +30,91 @@ export function setupPolicyPolicyVersionsRelations(
 }
 
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html
-export async function setupPolicyBucketRelations(transaction: Transaction) {
+export async function setupPolicyResourceRelations(
+  transaction: Transaction,
+  awsResource: NodeLabel,
+  resourceMatcher: (arn: IAMArn) => boolean,
+  actionMatcher: (arn: Action) => boolean
+): Promise<
+  { policyVersionId: string; policyName: string; statement: PolicyStatement }[]
+> {
   const policyVersions = await transaction.run(
     `MATCH (pv:${NodeLabel.POLICY_VERSION}) 
     RETURN pv.versionId AS versionId, pv.policyArn AS policyArn, pv.document AS document, pv.policyName AS policyName`
   )
 
   const statementsToProcess = policyVersions.records.flatMap((r) => {
-    const parsedPolicyDoc = PolicyDoc.decode(JSON.parse(r.get("document")))
     const policyArn: string = r.get("policyArn")
     const policyName: string = r.get("policyName")
-    const docVersion: string = r.get("versionId")
+    const policyVersionId: string = r.get("versionId")
+    const parsedPolicyDoc = PolicyDoc.decode(JSON.parse(r.get("document")))
 
     let policyDoc: PolicyDoc
     if (isRight(parsedPolicyDoc)) {
       policyDoc = parsedPolicyDoc.right
     } else {
-      throw new Error(`Policy ${policyArn} contains invalid Policy document`)
+      throw new Error(`Policy ${policyName} contains invalid Policy document`)
     }
 
-    return policyDoc.Statement.flatMap((statement) =>
-      statement.Resource.filter(isS3Resource).map((r) => {
-        const actions = [statement.Action].flat().map((a) => ({
+    const unsupportedStatements = policyDoc.Statement.filter(
+      (statement) =>
+        statement.NotResource.find(resourceMatcher) ||
+        ((statement.NotResource.find(resourceMatcher) ||
+          statement.Resource.find(resourceMatcher)) &&
+          statement.NotAction.find(actionMatcher))
+    )
+
+    const supportedStatements = policyDoc.Statement.flatMap((statement) =>
+      statement.Resource.filter(resourceMatcher).map((r) => {
+        const actions = statement.Action.filter(actionMatcher).map((a) => ({
           action: a.fullAction,
           regexAction: cypherActionRegex(a),
         }))
         return {
           actions,
           resource: r,
+          statementString: JSON.stringify(statement),
+          statement,
           policyArn,
           policyName,
           resourceArnRegex: cypherS3ArnRegex(r),
-          policyDocumentVersionId: docVersion,
+          policyDocumentVersionId: policyVersionId,
+          allow: statement.Effect === "Allow",
         }
       })
     )
+
+    return {
+      supportedStatements,
+      unsupportedStatements: unsupportedStatements.map((statement) => ({
+        policyVersionId,
+        policyName,
+        statement,
+      })),
+    }
   })
 
-  return await Promise.all(
-    statementsToProcess.map((stp) =>
-      transaction.run(
-        `
-        MATCH (pv:${NodeLabel.POLICY_VERSION}) WHERE (pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn) OR pv.policyName = $policyName
-        MATCH (b:${NodeLabel.BUCKET}) WHERE b.arn =~ $resourceArnRegex
-        UNWIND $actions as a 
-        MERGE (pv)-[hp:HAS_PERMISSION {action: a.action, regexAction: a.regexAction, prefix: $resource.resource}]-(b)
+  await Promise.all(
+    statementsToProcess
+      .flatMap((stp) => stp.supportedStatements)
+      .map((stp) =>
+        transaction.run(
+          `
+        MATCH (pv:${
+          NodeLabel.POLICY_VERSION
+        }) WHERE (pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn) OR pv.policyName = $policyName
+        MATCH (b:${awsResource}) WHERE b.arn =~ $resourceArnRegex
+        UNWIND $actions AS a
+        MERGE (pv)-[:${
+          stp.allow ? "HAS_PERMISSION" : "HAS_NO_PERMISSION"
+        } {action: a.action, regexAction: a.regexAction, prefix: $resource.resource, policyStatement: $statementString}]-(b)
         `,
-        stp
+          stp
+        )
       )
-    )
   )
+
+  return statementsToProcess.flatMap((stp) => stp.unsupportedStatements)
 }
 
 export function setupLambdaRoleRelations(
@@ -174,17 +211,13 @@ export async function setupRoleAllowsAssumeRelations(
     `,
     {
       services: rolesToProcess
-        .map((rtp) => rtp.services)
-        .flat()
+        .flatMap((rtp) => rtp.services)
         .map((rtp) => rtp.allowedAssume),
-      // services: uniquePrincipals(rolesToProcess, "services"),
       accounts: rolesToProcess
-        .map((rtp) => rtp.accounts)
-        .flat()
+        .flatMap((rtp) => rtp.accounts)
         .map((rtp) => rtp.allowedAssume),
       users: rolesToProcess
-        .map((rtp) => rtp.users)
-        .flat()
+        .flatMap((rtp) => rtp.users)
         .map((rtp) => rtp.allowedAssume),
     }
   )
@@ -253,7 +286,7 @@ export async function setupRoleAllowsAssumeRelations(
 
 export default {
   setupPolicyPolicyVersionsRelations,
-  setupPolicyBucketRelations,
+  setupPolicyResourceRelations,
   setupLambdaRoleRelations,
   setupRolePolicyRelations,
   setupGlueJobRoleRelations,

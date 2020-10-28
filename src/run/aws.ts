@@ -1,6 +1,8 @@
-import AWS from "aws-sdk"
+import AWS, { STS } from "aws-sdk"
 import neo4j from "neo4j-driver"
 import ora from "ora"
+import { matchesAction, matchesResource } from "../db/aws/arnUtils"
+import { NodeLabel } from "../db/aws/constants"
 import pLimit from "p-limit"
 import s3 from "../api/aws/s3"
 import iam from "../api/aws/iam"
@@ -54,10 +56,14 @@ export async function run(awsCredentials, regions, dbCredentials) {
         AWS.config.region = region
         console.log(`Processing region ${AWS.config.region}...`)
 
+        const awsAccountId = (await await (
+          await new STS().getCallerIdentity().promise()
+        ).Account) as string
+
         const lambdaFunctions = await lambda.timedFetchLambdas()
         await dbNodes.upsertLambdas(transaction, lambdaFunctions)
 
-        const glueJobs = await glue.timedFetchGlueJobs()
+        const glueJobs = await glue.timedFetchGlueJobs(awsAccountId)
         await dbNodes.upsertGlueJobs(transaction, glueJobs)
       })
     )
@@ -66,11 +72,28 @@ export async function run(awsCredentials, regions, dbCredentials) {
   const relationsSpinner = ora("Setting up relations...").start()
   await dbRelations.setupRolePolicyRelations(transaction, roles)
   await dbRelations.setupPolicyPolicyVersionsRelations(transaction)
-  await dbRelations.setupPolicyBucketRelations(transaction)
   await dbRelations.setupRoleAllowsAssumeRelations(transaction)
   await dbRelations.setupLambdaRoleRelations(transaction)
   await dbRelations.setupGlueJobRoleRelations(transaction)
-  relationsSpinner.succeed("Finished setting up relations")
+  const skippedStatements = await dbRelations.setupPolicyResourceRelations(
+    transaction,
+    NodeLabel.GLUE_JOB,
+    matchesResource("glue"),
+    matchesAction("glue")
+  )
+
+  if (skippedStatements.length > 0) {
+    relationsSpinner.warn(
+      `Finished setting up relations. Skipped statements in the following policies because they contain unsupported elements:`
+    )
+    new Set(
+      skippedStatements.map(
+        (elem) => `${elem.policyName} at version ${elem.policyVersionId}`
+      )
+    ).forEach((elem) => console.log(elem))
+  } else {
+    relationsSpinner.succeed("Finished setting up relations")
+  }
 
   const finishingSpinner = ora("Commiting work...").start()
   await transaction.commit()

@@ -37,14 +37,11 @@ const IAMArn = new t.Type<IAMArnType, IAMArnType, unknown>(
   (input: unknown): input is IAMArnType => typeof input === "string",
   (input: unknown, context: t.Context) => {
     try {
-      const [
-        ,
-        partition,
-        service,
-        region,
-        account,
-        resource,
-      ] = (input as string).split(":")
+      const splitted =
+        input === "*"
+          ? ["", "*", "*", "*", "*", "*"]
+          : (input as string).split(":")
+      const [, partition, service, region, account, resource] = splitted
       return t.success({
         partition,
         service,

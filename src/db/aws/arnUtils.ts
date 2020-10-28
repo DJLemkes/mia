@@ -1,6 +1,12 @@
-import { IAMArn } from "./policyDocUtils"
+import { IAMArn, Action } from "./policyDocUtils"
 
-export const isS3Resource = (arn: IAMArn): boolean => arn.service === "s3"
+export const matchesResource = (serviceName: string) => (
+  arn: IAMArn
+): boolean => arn.service === serviceName.toLowerCase() || arn.service === "*"
+
+export const matchesAction = (serviceName: string) => (
+  action: Action
+): boolean => action.service === serviceName.toLowerCase()
 
 export const cypherS3ArnRegex = (s3Arn: IAMArn): string =>
   s3Arn.fullArn.split("/")[0].replace("*", ".*")

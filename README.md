@@ -1,6 +1,7 @@
 # Mia
 
 Get a birds-eye view of your AWS account authorization structure. Quickly answer questions like:
+
 - Who or what as access to resource S3 bucket `X`?
 - What is the shortest path to read from `X` and write to `Y`?
 - Which role provides access most resources?
@@ -16,7 +17,7 @@ We compared Mia to existing product listing [here](https://aws.amazon.com/produc
 
 ### AWS Config (Detection)
 
-Continuously monitor and assess AWS *resource configurations*. Easily track changes and relate them to CloudTrail events. Mia is Config on steroids though with a focus on inter-resource relationships instead of resources themselves. Config is time oriented whereas Mia is current state oriented first. Time orientation could be added.
+Continuously monitor and assess AWS _resource configurations_. Easily track changes and relate them to CloudTrail events. Mia is Config on steroids though with a focus on inter-resource relationships instead of resources themselves. Config is time oriented whereas Mia is current state oriented first. Time orientation could be added.
 
 ### AWS Detective (Incident response)
 
@@ -60,10 +61,7 @@ Use one of the queries below to get some insights through the Neo4j web interfac
 Neo4j works with node labels. We use this to distinguish between AWS resources such as Role, Bucket, Policy, Lambda and so forth. Nodes can have multiple labels which we use to support a liberal way of polymorphism. For instance, we have a `Policy` label but also more specific `InlinePolicy`, `AWSManagedPolicy` and `CustomerManagedPolicy` that you can use to narrow down a query. To get a list of all node labels execute:
 
 ```cypher
-MATCH (n) 
-UNWIND LABELS(n) AS ln
-WITH COLLECT(DISTINCT ln) as xln
-RETURN DISTINCT xln
+CALL db.labels()
 ```
 
 To then show all nodes that have a label (e.g Role) execute:
@@ -71,6 +69,10 @@ To then show all nodes that have a label (e.g Role) execute:
 ```cypher
 MATCH (r:Role) RETURN r
 ```
+
+### Schema visualization
+
+You can use the following queries to also view al relationship types: `CALL db.relationshipTypes()`. Besides that, you can run `CALL db.schema.visualization()` for a visualization of the node and relationships types currently active.
 
 ### Check if two buckets are completely isolated from an IAM perspective
 
@@ -120,8 +122,8 @@ You can replace the label of `(a)` by any of the labels you've discovered above.
 
 ```cypher
 MATCH p=(a:AWSService)-[*]->(pv:PolicyVersion)-[hp:HAS_PERMISSION]->(b:Bucket)
-WHERE pv.isDefault 
-AND b.name = 'bucket-name' 
+WHERE pv.isDefault
+AND b.name = 'bucket-name'
 AND pv.createdAt > datetime({year: 2020, month: 6, day: 1})
 RETURN p
 ```
