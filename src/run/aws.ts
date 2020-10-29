@@ -10,6 +10,7 @@ import s3 from "../api/aws/s3"
 import iam from "../api/aws/iam"
 import lambda from "../api/aws/lambda"
 import glue from "../api/aws/glue"
+import athena from "../api/aws/athena"
 import dbNodes from "../db/aws/nodes"
 import { filterUndefined } from "../utils"
 import dbRelations, { UnsupportedStatement } from "../db/aws/relations"
@@ -57,7 +58,6 @@ export async function run(awsCredentials, regions, dbCredentials) {
   const policies = await iam.timedFetchPolicies()
   await dbNodes.upsertPolicies(transaction, policies)
   const allPolicyVersions = await iam.timedFetchPolicyVersions(
-    // policies.slice(0, 5).map((p) => p.Arn)
     filterUndefined(policies.map((p) => p.Arn))
   )
 
@@ -86,6 +86,15 @@ export async function run(awsCredentials, regions, dbCredentials) {
 
         const glueJobs = await glue.timedFetchGlueJobs(awsAccountId)
         await dbNodes.upsertGlueJobs(transaction, glueJobs)
+
+        const glueDatabases = await glue.timedfetchGlueDatabases(awsAccountId)
+        await dbNodes.upsertGlueDatabases(transaction, glueDatabases)
+
+        const glueTables = await glue.timedfetchGlueTables(awsAccountId)
+        await dbNodes.upsertGlueTables(transaction, glueTables)
+
+        const athenaWorkgroups = await athena.timedFetchWorkGroups(awsAccountId)
+        await dbNodes.upsertAthenaWorkgroups(transaction, athenaWorkgroups)
       })
     )
   )
@@ -96,17 +105,14 @@ export async function run(awsCredentials, regions, dbCredentials) {
   await dbRelations.setupRoleAllowsAssumeRelations(transaction)
   await dbRelations.setupLambdaRoleRelations(transaction)
   await dbRelations.setupGlueJobRoleRelations(transaction)
-  // const skippedBucketStatements = await dbRelations.setupPolicyResourceRelations(
-  //   transaction,
-  //   NodeLabel.BUCKET,
-  //   matchesResource("s3"),
-  //   matchesAction("s3")
-  // )
 
   const setupRelationResults = [
     [NodeLabel.BUCKET, "s3"],
     [NodeLabel.LAMBDA, "lambda"],
     [NodeLabel.GLUE_JOB, "glue"],
+    [NodeLabel.GLUE_DATABASE, "glue"],
+    [NodeLabel.GLUE_TABLE, "glue"],
+    [NodeLabel.ATHENA_WORKGROUP, "athena"],
   ].map(([nodeLabel, serviceName]) =>
     dbRelations.setupPolicyResourceRelations(
       transaction,

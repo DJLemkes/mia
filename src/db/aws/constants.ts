@@ -4,6 +4,8 @@ export enum NodeLabel {
   AWS_SERVICE = "AWSService",
   AWS_USER = "AWSUser",
   GLUE_JOB = "GlueJob",
+  GLUE_DATABASE = "GlueDatabase",
+  GLUE_TABLE = "GlueTable",
   LAMBDA = "Lambda",
   BUCKET = "Bucket",
   ROLE = "Role",
@@ -12,4 +14,5 @@ export enum NodeLabel {
   AWS_MANAGED_POLICY = "AWSManagedPolicy",
   CUSTOMER_MANAGED_POLICY = "CustomerManagedPolicy",
   POLICY_VERSION = "PolicyVersion",
+  ATHENA_WORKGROUP = "AthenaWorkgroup",
 }

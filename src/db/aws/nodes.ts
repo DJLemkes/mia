@@ -193,6 +193,92 @@ async function upsertGlueJobs(transaction: Transaction, jobs: DbGlueJob[]) {
   )
 }
 
+type DbGlueDatabase = {
+  Name: string
+  Arn: string
+  CatalogId?: string
+  Description?: string
+  CreateTime?: Date
+}
+
+async function upsertGlueDatabases(
+  transaction: Transaction,
+  databases: DbGlueDatabase[]
+) {
+  return await transaction.run(
+    `UNWIND $databases as db
+     MERGE (gdb:${NodeLabel.AWS_RESOURCE}:${NodeLabel.GLUE_DATABASE} 
+      {arn: db.Arn, name: db.Name, createdAt: db.createdAt})
+     ON CREATE SET gdb.catalogId = db.CatalogId, gdb.description = db.Description
+     ON MATCH SET gdb.catalogId = db.CatalogId, gdb.description = db.Description
+      `,
+    {
+      databases: databases.map((db) => ({
+        ...db,
+        createdAt: DateTime.fromStandardDate(db.CreateTime),
+      })),
+    }
+  )
+}
+
+type DbGlueTable = {
+  Name: string
+  Arn: string
+  DatabaseName: string
+  DatabaseArn: string
+  Description?: string
+  CreateTime?: Date
+}
+
+async function upsertGlueTables(
+  transaction: Transaction,
+  tables: DbGlueTable[]
+) {
+  return await transaction.run(
+    `UNWIND $tables as t
+     MERGE (gt:${NodeLabel.AWS_RESOURCE}:${NodeLabel.GLUE_TABLE} 
+      {arn: t.Arn, name: t.Name, createdAt: t.createdAt, 
+       databaseArn: t.DatabaseArn, databaseName: t.DatabaseName})
+     ON CREATE SET gt.description = t.Description
+     ON MATCH SET gt.description = t.Description
+      `,
+    {
+      tables: tables.map((db) => ({
+        ...db,
+        createdAt: DateTime.fromStandardDate(db.CreateTime),
+      })),
+    }
+  )
+}
+
+type DbAthenaWorkgroup = {
+  Name: string
+  Arn: string
+  CreationTime?: Date
+  State?: AWS.Athena.WorkGroupState
+  Description?: string
+}
+
+async function upsertAthenaWorkgroups(
+  transaction: Transaction,
+  workgroups: DbAthenaWorkgroup[]
+) {
+  return await transaction.run(
+    `UNWIND $workgroups as wg
+     MERGE (awg:${NodeLabel.AWS_RESOURCE}:${NodeLabel.ATHENA_WORKGROUP} 
+      {arn: wg.Arn, name: wg.Name, createdAt: wg.createdAt})
+    ON CREATE SET awg.description = wg.Description, awg.state = wg.State
+    ON MATCH SET awg.description = wg.Description, awg.state = wg.State
+    `,
+    {
+      workgroups: workgroups.map((j) => ({
+        ...j,
+        createdAt: DateTime.fromStandardDate(j.CreationTime),
+      })),
+    }
+  )
+}
+
 export default {
   upsertBuckets,
   upsertPolicies,
@@ -200,5 +286,8 @@ export default {
   upsertLambdas,
   upsertRoles,
   upsertGlueJobs,
+  upsertGlueTables,
   upsertInlineRolePolicies,
+  upsertAthenaWorkgroups,
+  upsertGlueDatabases,
 }

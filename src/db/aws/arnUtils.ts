@@ -18,3 +18,6 @@ export const isUser = (arn: string): boolean => arn.indexOf(":user") > -1
 export const isAWSAccount = (arn: string): boolean => arn.indexOf(":root") > -1
 
 export const isRole = (arn: string): boolean => arn.indexOf(":role") > -1
+
+export const baseArn = (region, accountId) =>
+  `arn:aws:athena:${region}:${accountId}:`
