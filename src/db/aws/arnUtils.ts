@@ -6,7 +6,8 @@ export const matchesResource = (serviceName: string) => (
 
 export const matchesAction = (serviceName: string) => (
   action: Action
-): boolean => action.service === serviceName.toLowerCase()
+): boolean =>
+  action.service === serviceName.toLowerCase() || action.service === "*"
 
 export const cypherS3ArnRegex = (s3Arn: IAMArn): string =>
   s3Arn.fullArn.split("/")[0].replace("*", ".*")

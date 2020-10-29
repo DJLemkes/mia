@@ -29,6 +29,12 @@ export function setupPolicyPolicyVersionsRelations(
     .then(() => undefined)
 }
 
+export type UnsupportedStatement = {
+  policyVersionId: string
+  policyName: string
+  statement: PolicyStatement
+}
+
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html
 export async function setupPolicyResourceRelations(
   transaction: Transaction,
@@ -36,7 +42,11 @@ export async function setupPolicyResourceRelations(
   resourceMatcher: (arn: IAMArn) => boolean,
   actionMatcher: (arn: Action) => boolean
 ): Promise<
-  { policyVersionId: string; policyName: string; statement: PolicyStatement }[]
+  {
+    notResource: UnsupportedStatement[]
+    notAction: UnsupportedStatement[]
+    condition: UnsupportedStatement[]
+  }[]
 > {
   const policyVersions = await transaction.run(
     `MATCH (pv:${NodeLabel.POLICY_VERSION}) 
@@ -56,12 +66,22 @@ export async function setupPolicyResourceRelations(
       throw new Error(`Policy ${policyName} contains invalid Policy document`)
     }
 
-    const unsupportedStatements = policyDoc.Statement.filter(
+    const notResources = policyDoc.Statement.filter((statement) =>
+      statement.NotResource.find(resourceMatcher)
+    )
+
+    const notActions = policyDoc.Statement.filter(
       (statement) =>
-        statement.NotResource.find(resourceMatcher) ||
-        ((statement.NotResource.find(resourceMatcher) ||
+        (statement.NotResource.find(resourceMatcher) ||
           statement.Resource.find(resourceMatcher)) &&
-          statement.NotAction.find(actionMatcher))
+        statement.NotAction.find(actionMatcher)
+    )
+
+    const conditions = policyDoc.Statement.filter(
+      (statement) =>
+        (statement.NotResource.find(resourceMatcher) ||
+          statement.Resource.find(resourceMatcher)) &&
+        Object.keys(statement.Condition).length > 0
     )
 
     const supportedStatements = policyDoc.Statement.flatMap((statement) =>
@@ -74,6 +94,10 @@ export async function setupPolicyResourceRelations(
           actions,
           resource: r,
           statementString: JSON.stringify(statement),
+          conditionString:
+            Object.keys(statement.Condition).length > 0
+              ? JSON.stringify(statement.Condition)
+              : null,
           statement,
           policyArn,
           policyName,
@@ -84,13 +108,20 @@ export async function setupPolicyResourceRelations(
       })
     )
 
+    const statementsWithName = (statements) =>
+      statements.map((statement) => ({
+        policyVersionId,
+        policyName: policyArn || policyName,
+        statement,
+      }))
+
     return {
       supportedStatements,
-      unsupportedStatements: unsupportedStatements.map((statement) => ({
-        policyVersionId,
-        policyName,
-        statement,
-      })),
+      unsupportedStatements: {
+        notResource: statementsWithName(notResources),
+        notAction: statementsWithName(notActions),
+        condition: statementsWithName(conditions),
+      },
     }
   })
 
@@ -100,15 +131,18 @@ export async function setupPolicyResourceRelations(
       .map((stp) =>
         transaction.run(
           `
-        MATCH (pv:${
-          NodeLabel.POLICY_VERSION
-        }) WHERE (pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn) OR pv.policyName = $policyName
-        MATCH (b:${awsResource}) WHERE b.arn =~ $resourceArnRegex
-        UNWIND $actions AS a
-        MERGE (pv)-[:${
-          stp.allow ? "HAS_PERMISSION" : "HAS_NO_PERMISSION"
-        } {action: a.action, regexAction: a.regexAction, prefix: $resource.resource, policyStatement: $statementString}]-(b)
-        `,
+          MATCH (pv:${
+            NodeLabel.POLICY_VERSION
+          }) WHERE (pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn) OR pv.policyName = $policyName
+          MATCH (b:${awsResource}) WHERE b.arn =~ $resourceArnRegex
+          UNWIND $actions AS a
+          MERGE (pv)-[hp:${
+            stp.allow ? "HAS_PERMISSION" : "HAS_NO_PERMISSION"
+          } {action: a.action, regexAction: a.regexAction, prefix: $resource.resource, 
+            policyStatement: $statementString}]-(b)
+          ON CREATE SET hp.condition = $conditionString
+          ON MATCH SET hp.condition = $conditionString
+          `, // because of the "Cannot merge relationship using null property value for condition" problem
           stp
         )
       )

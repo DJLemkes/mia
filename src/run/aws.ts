@@ -1,8 +1,10 @@
 import AWS, { STS } from "aws-sdk"
+// import AWS from "aws-sdk"
 import neo4j from "neo4j-driver"
 import ora from "ora"
 import { matchesAction, matchesResource } from "../db/aws/arnUtils"
 import { NodeLabel } from "../db/aws/constants"
+import { warning } from "log-symbols"
 import pLimit from "p-limit"
 import s3 from "../api/aws/s3"
 import iam from "../api/aws/iam"
@@ -10,7 +12,26 @@ import lambda from "../api/aws/lambda"
 import glue from "../api/aws/glue"
 import dbNodes from "../db/aws/nodes"
 import { filterUndefined } from "../utils"
-import dbRelations from "../db/aws/relations"
+import dbRelations, { UnsupportedStatement } from "../db/aws/relations"
+
+const logUnsupported = (
+  unsupported: UnsupportedStatement[],
+  spinner: ora.Ora
+) => {
+  unsupported
+    .reduce((acc, statement) => {
+      const versionText = statement.policyVersionId
+        ? ` at version ${statement.policyVersionId}`
+        : ""
+      return acc.add(`${statement.policyName}${versionText}`)
+    }, new Set<string>())
+    .forEach((logLine) =>
+      spinner.stopAndPersist({
+        symbol: warning,
+        text: logLine,
+      })
+    )
+}
 
 export async function run(awsCredentials, regions, dbCredentials) {
   AWS.config.credentials = awsCredentials
@@ -46,9 +67,6 @@ export async function run(awsCredentials, regions, dbCredentials) {
     )
   )
 
-  const buckets = await s3.fetchBuckets()
-  await dbNodes.upsertBuckets(transaction, buckets)
-
   const regionLimit = pLimit(1)
   await Promise.all(
     regions.map((region) =>
@@ -59,6 +77,9 @@ export async function run(awsCredentials, regions, dbCredentials) {
         const awsAccountId = (await await (
           await new STS().getCallerIdentity().promise()
         ).Account) as string
+
+        const buckets = await s3.fetchBuckets()
+        await dbNodes.upsertBuckets(transaction, buckets)
 
         const lambdaFunctions = await lambda.timedFetchLambdas()
         await dbNodes.upsertLambdas(transaction, lambdaFunctions)
@@ -75,25 +96,58 @@ export async function run(awsCredentials, regions, dbCredentials) {
   await dbRelations.setupRoleAllowsAssumeRelations(transaction)
   await dbRelations.setupLambdaRoleRelations(transaction)
   await dbRelations.setupGlueJobRoleRelations(transaction)
-  const skippedStatements = await dbRelations.setupPolicyResourceRelations(
-    transaction,
-    NodeLabel.GLUE_JOB,
-    matchesResource("glue"),
-    matchesAction("glue")
+  // const skippedBucketStatements = await dbRelations.setupPolicyResourceRelations(
+  //   transaction,
+  //   NodeLabel.BUCKET,
+  //   matchesResource("s3"),
+  //   matchesAction("s3")
+  // )
+
+  const setupRelationResults = [
+    [NodeLabel.BUCKET, "s3"],
+    [NodeLabel.LAMBDA, "lambda"],
+    [NodeLabel.GLUE_JOB, "glue"],
+  ].map(([nodeLabel, serviceName]) =>
+    dbRelations.setupPolicyResourceRelations(
+      transaction,
+      nodeLabel as NodeLabel,
+      matchesResource(serviceName),
+      matchesAction(serviceName)
+    )
   )
 
-  if (skippedStatements.length > 0) {
-    relationsSpinner.warn(
-      `Finished setting up relations. Skipped statements in the following policies because they contain unsupported elements:`
-    )
-    new Set(
-      skippedStatements.map(
-        (elem) => `${elem.policyName} at version ${elem.policyVersionId}`
-      )
-    ).forEach((elem) => console.log(elem))
-  } else {
-    relationsSpinner.succeed("Finished setting up relations")
+  const skippedStatements = (await Promise.all(setupRelationResults)).flat()
+
+  const iamNotResources = skippedStatements.flatMap((s) => s.notResource)
+  if (iamNotResources.length > 0) {
+    relationsSpinner.stopAndPersist({
+      symbol: warning,
+      text: `Skipping statement(s) in the following policies because the contain unsupported NotResource elements`,
+    })
+    logUnsupported(iamNotResources, relationsSpinner)
   }
+
+  const iamNotActions = skippedStatements.flatMap((s) => s.notAction)
+  if (iamNotActions.length > 0) {
+    relationsSpinner.stopAndPersist({
+      symbol: warning,
+      text: `Skipping statement(s) in the following policies because the contain unsupported NotAction elements`,
+    })
+    logUnsupported(iamNotActions, relationsSpinner)
+  }
+
+  const iamConditionStatements = skippedStatements.flatMap((s) => s.condition)
+  if (iamConditionStatements.length > 0) {
+    relationsSpinner.stopAndPersist({
+      symbol: warning,
+      text:
+        "IAM 'Condition' statements are not yet fully being processed. " +
+        "We annotated relations with the 'Condition' statement when we encountered them in:",
+    })
+    logUnsupported(iamConditionStatements, relationsSpinner)
+  }
+
+  relationsSpinner.succeed("Finished setting up relations")
 
   const finishingSpinner = ora("Commiting work...").start()
   await transaction.commit()

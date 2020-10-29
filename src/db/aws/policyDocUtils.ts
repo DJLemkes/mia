@@ -71,7 +71,8 @@ const Action = new t.Type<IAMActionType, IAMActionType, unknown>(
     typeof input === "string" && input.split(":").length === 2,
   (input: unknown, context: t.Context) => {
     try {
-      const [service, action] = (input as string).split(":")
+      const [service, action] =
+        input === "*" ? ["*", "*"] : (input as string).split(":")
       return t.success({
         service,
         action,
@@ -97,6 +98,14 @@ const Effect = t.union([t.literal("Allow"), t.literal("Deny")])
 
 export type Effect = t.TypeOf<typeof Effect>
 
+const ConditionValue = t.record(t.string, IAMArray(t.string))
+
+export type ConditionValue = t.TypeOf<typeof ConditionValue>
+
+const ConditionBlock = t.record(t.string, ConditionValue)
+
+export type ConditionBlock = t.TypeOf<typeof ConditionBlock>
+
 const PolicyStatement = t.type(
   {
     Effect: t.readonly(Effect),
@@ -105,6 +114,7 @@ const PolicyStatement = t.type(
     Action: IAMArray(Action),
     NotAction: IAMArray(Action),
     Principal: withFallback(Principal, { Service: [], AWS: [] }),
+    Condition: withFallback(ConditionBlock, {}),
   },
   "PolicyStatement"
 )
