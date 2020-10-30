@@ -2,6 +2,7 @@ import AWS from "aws-sdk"
 import inquirer from "inquirer"
 import debug from "debug"
 import { run as awsRun } from "./src/run/aws"
+import { run as postgresRun } from "./src/run/postgres"
 
 const argv = require("yargs")
   .alias("cf", "credentials-file")
@@ -50,9 +51,10 @@ const program = argv.approve
           name: "proceed",
         },
       ])
-      .then(({ proceed }) => {
+      .then(async ({ proceed }) => {
         if (proceed) {
-          return awsRun(awsCredentials, regions, dbCredentials)
+          return postgresRun(dbCredentials)
+          // return awsRun(awsCredentials, regions, dbCredentials)
         } else {
           console.log("Exiting...")
           return Promise.resolve()

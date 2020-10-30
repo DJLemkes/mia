@@ -10,3 +10,9 @@ services:
       - NEO4J_AUTH=none
     volumes:
       - "$HOME/neo4j/data:/data"
+  postgres:
+    image: postgres:13.0-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: mia

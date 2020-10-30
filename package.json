@@ -17,6 +17,7 @@
     "neo4j-driver": "4.1.1",
     "ora": "5.1.0",
     "p-limit": "3.0.2",
+    "pg": "8.4.2",
     "yargs": "15.4.1"
   },
   "devDependencies": {
