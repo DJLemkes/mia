@@ -1,0 +1,19 @@
+{
+  "aws": {
+    "cliProfile": "default",
+    "regions": ["eu-central-1"]
+  },
+  "postgres": {
+    "instances": [
+      {
+        "host": "foo.eu-central-1.rds.amazonaws.com",
+        "port": 5432,
+        "database": "mia",
+        "user": "mia_admin",
+        "password": "mia_admin",
+        "rdsId": "mia",
+        "rdsRegion": "eu-central-1"
+      }
+    ]
+  }
+}

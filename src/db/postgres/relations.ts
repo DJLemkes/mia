@@ -56,9 +56,25 @@ async function setupRoleTableRelations(
   )
 }
 
+async function setupRoleDatabaseRelations(
+  transaction: Transaction,
+  roleTableGrants: RoleTableGrant[]
+) {
+  return transaction.run(
+    `
+    UNWIND $roleTableGrants AS rtg
+    MATCH (r:${NodeLabel.ROLE}) WHERE r.name = rtg.roleName AND r.databaseName = rtg.databaseName
+    MATCH (db:${NodeLabel.DATABASE}) WHERE db.name = rtg.databaseName
+    MERGE (r)-[:BELONGS_TO]->(db)
+    `,
+    { roleTableGrants }
+  )
+}
+
 export default {
   setupSchemaDatabaseRelations,
   setupTableSchemaRelations,
   setupRoleTableRelations,
   setupRoleRoleRelations,
+  setupRoleDatabaseRelations,
 }

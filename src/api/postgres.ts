@@ -2,9 +2,9 @@
 import { Client } from "pg"
 
 export type ConnectionInfo = {
-  user: string
   host: string
   database: string
+  user: string
   password: string
   port: number
 }

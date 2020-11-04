@@ -5,6 +5,8 @@ type DbPostgresDatabase = {
   name: string
   host: string
   port: number
+  rdsId?: string
+  rdsRegion?: string
 }
 
 async function upsertDatabases(
@@ -14,7 +16,8 @@ async function upsertDatabases(
   return transaction.run(
     `UNWIND $databases as db 
      MERGE (:${NodeLabel.POSTGRES_RESOURCE}:${NodeLabel.DATABASE} 
-            {name: db.name, host: db.host, port: db.port})
+            {name: db.name, host: db.host, port: db.port,
+             rdsId: db.rdsId, rdsRegion: db.rdsRegion})
     `,
     { databases }
   )

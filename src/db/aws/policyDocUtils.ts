@@ -29,6 +29,7 @@ type IAMArnType = {
   readonly region: string
   readonly account: string
   readonly resource: string
+  readonly resourceId: string
   readonly fullArn: string
 }
 
@@ -41,13 +42,22 @@ const IAMArn = new t.Type<IAMArnType, IAMArnType, unknown>(
         input === "*"
           ? ["", "*", "*", "*", "*", "*"]
           : (input as string).split(":")
-      const [, partition, service, region, account, resource] = splitted
+      const [
+        ,
+        partition,
+        service,
+        region,
+        account,
+        resource,
+        resourceId,
+      ] = splitted
       return t.success({
         partition,
         service,
         region,
         account,
         resource,
+        resourceId,
         fullArn: input as string,
       })
     } catch (e) {

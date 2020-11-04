@@ -1,39 +1,33 @@
-import postgres from "../api/postgres"
+import postgres, { ConnectionInfo } from "../api/postgres"
 import neo4j from "neo4j-driver"
 import dbNodes from "../db/postgres/nodes"
 import dbRelations from "../db/postgres/relations"
-import { string } from "yargs"
 
-export async function run(dbCredentials) {
-  const connectionInfo = {
-    user: "postgres",
-    host: "localhost",
-    database: "postgres",
-    password: "mia",
-    port: 5432,
-  }
-
+export async function run(neo4jCredentials, pgConnectionInfo: ConnectionInfo) {
   const driver = neo4j.driver(
-    dbCredentials.host,
-    neo4j.auth.basic(dbCredentials.user, dbCredentials.password)
+    neo4jCredentials.host,
+    neo4j.auth.basic(neo4jCredentials.user, neo4jCredentials.password)
   )
   const session = driver.session({ defaultAccessMode: neo4j.session.WRITE })
-  await session.run("MATCH (a) DETACH DELETE a")
+  // await session.run("MATCH (a) DETACH DELETE a")
   const transaction = session.beginTransaction()
 
-  const pgDatabases = [{ ...connectionInfo, name: connectionInfo.database }]
+  const pgDatabases = [{ ...pgConnectionInfo, name: pgConnectionInfo.database }]
   await dbNodes.upsertDatabases(transaction, pgDatabases)
 
-  const pgSchemas = await postgres.fetchSchemas(connectionInfo)
+  const pgSchemas = await postgres.fetchSchemas(pgConnectionInfo)
   await dbNodes.upsertSchema(transaction, pgSchemas)
 
-  const tables = await postgres.fetchTables(connectionInfo)
+  const tables = await postgres.fetchTables(pgConnectionInfo)
   await dbNodes.upsertTables(transaction, tables)
 
-  const pgRoles = await postgres.fetchRoles(connectionInfo)
+  const pgRoles = await postgres.fetchRoles(pgConnectionInfo)
   await dbNodes.upsertRoles(
     transaction,
-    pgRoles.map((r) => ({ ...r, databaseName: connectionInfo.database }))
+    pgRoles.map((r) => ({
+      ...r,
+      databaseName: pgConnectionInfo.database,
+    }))
   )
 
   await dbRelations.setupSchemaDatabaseRelations(transaction)
@@ -45,8 +39,9 @@ export async function run(dbCredentials) {
   )
   await dbRelations.setupRoleRoleRelations(transaction, roleMapping)
 
-  const roleTableGrants = await postgres.fetchRoleTableGrants(connectionInfo)
+  const roleTableGrants = await postgres.fetchRoleTableGrants(pgConnectionInfo)
   await dbRelations.setupRoleTableRelations(transaction, roleTableGrants)
+  await dbRelations.setupRoleDatabaseRelations(transaction, roleTableGrants)
 
   await transaction.commit()
   session.close()
