@@ -1,12 +1,12 @@
 import { Transaction } from "neo4j-driver"
 import { RoleTableGrant } from "../../api/postgres"
-import { NodeLabel } from "./constants"
+import { NodeLabel, RelationLabel } from "./constants"
 
 async function setupSchemaDatabaseRelations(transaction: Transaction) {
   return transaction.run(
     `MATCH (db:${NodeLabel.DATABASE})
     MATCH (s:${NodeLabel.SCHEMA}) WHERE s.databaseName = db.name
-    MERGE (s)-[:BELONGS_TO]->(db)
+    MERGE (s)-[:${RelationLabel.BELONGS_TO}]->(db)
     `
   )
 }
@@ -16,7 +16,7 @@ async function setupTableSchemaRelations(transaction: Transaction) {
     `MATCH (t:${NodeLabel.TABLE})
     MATCH (s:${NodeLabel.SCHEMA}) 
     WHERE s.name = t.schemaName AND s.databaseName = t.databaseName
-    MERGE (t)-[:BELONGS_TO]->(s)
+    MERGE (t)-[:${RelationLabel.BELONGS_TO}]->(s)
     `
   )
 }
@@ -31,7 +31,7 @@ async function setupRoleRoleRelations(
         transaction.run(
           `MATCH (source:${NodeLabel.ROLE}) WHERE source.name = $role
            MATCH (target:${NodeLabel.ROLE}) WHERE target.name = $memberOf AND source.databaseName = target.databaseName
-           MERGE (source)-[:MEMBER_OF]->(target)
+           MERGE (source)-[:${RelationLabel.MEMBER_OF}]->(target)
             `,
           { role, memberOf }
         )
@@ -50,7 +50,7 @@ async function setupRoleTableRelations(
     UNWIND $roleTableGrants AS rtg
     MATCH (r:${NodeLabel.ROLE}) WHERE r.name = rtg.roleName AND r.databaseName = rtg.databaseName
     MATCH (t:${NodeLabel.TABLE}) WHERE t.name = rtg.tableName AND t.databaseName = rtg.databaseName AND t.schemaName = rtg.schemaName
-    MERGE (r)-[:HAS_GRANT {name: rtg.grant}]->(t)
+    MERGE (r)-[:${RelationLabel.HAS_GRANT} {name: rtg.grant}]->(t)
     `,
     { roleTableGrants }
   )
@@ -65,7 +65,7 @@ async function setupRoleDatabaseRelations(
     UNWIND $roleTableGrants AS rtg
     MATCH (r:${NodeLabel.ROLE}) WHERE r.name = rtg.roleName AND r.databaseName = rtg.databaseName
     MATCH (db:${NodeLabel.DATABASE}) WHERE db.name = rtg.databaseName
-    MERGE (r)-[:BELONGS_TO]->(db)
+    MERGE (r)-[:${RelationLabel.BELONGS_TO}]->(db)
     `,
     { roleTableGrants }
   )

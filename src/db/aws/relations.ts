@@ -10,7 +10,7 @@ import {
   PolicyStatement,
 } from "./policyDocUtils"
 import { isRight } from "fp-ts/lib/Either"
-import { NodeLabel } from "./constants"
+import { NodeLabel, RelationLabel } from "./constants"
 import { Transaction, Result } from "neo4j-driver"
 
 const cypherActionRegex = (awsAction: Action) =>
@@ -24,7 +24,7 @@ export function setupPolicyPolicyVersionsRelations(
       `MATCH (pv:${NodeLabel.POLICY_VERSION})
        MATCH (p:${NodeLabel.POLICY})
        WHERE p.arn = pv.policyArn OR p.name = pv.policyName
-       MERGE (p)-[:HAS]->(pv)`
+       MERGE (p)-[:${RelationLabel.HAS}]->(pv)`
     )
     .then(() => undefined)
 }
@@ -137,7 +137,9 @@ export async function setupPolicyResourceRelations(
           MATCH (b:${awsResource}) WHERE b.arn =~ $resourceArnRegex
           UNWIND $actions AS a
           MERGE (pv)-[hp:${
-            stp.allow ? "HAS_PERMISSION" : "HAS_NO_PERMISSION"
+            stp.allow
+              ? RelationLabel.HAS_PERMISSION
+              : RelationLabel.HAS_NO_PERMISSION
           } {action: a.action, regexAction: a.regexAction, prefix: $resource.resource, 
             policyStatement: $statementString}]-(b)
           ON CREATE SET hp.condition = $conditionString
@@ -159,7 +161,7 @@ export function setupLambdaRoleRelations(
       `
       MATCH (l:${NodeLabel.LAMBDA}) 
       MATCH (r:${NodeLabel.ROLE}) WHERE r.arn = l.roleArn
-      MERGE (l)-[:HAS]->(r)
+      MERGE (l)-[:${RelationLabel.HAS}]->(r)
       `
     )
     .then(() => undefined)
@@ -177,7 +179,7 @@ export async function setupRolePolicyRelations(
             `
               MATCH (r:${NodeLabel.ROLE}) WHERE r.arn = $roleArn
               MATCH (p:${NodeLabel.CUSTOMER_MANAGED_POLICY}) WHERE p.arn = $policyArn
-              MERGE (r)-[:HAS]->(p)
+              MERGE (r)-[:${RelationLabel.HAS}]->(p)
               `,
             { roleArn: role.Arn, policyArn: ap.PolicyArn }
           )
@@ -190,7 +192,7 @@ export async function setupRolePolicyRelations(
     `
     MATCH (r:${NodeLabel.ROLE})
     MATCH (p:${NodeLabel.INLINE_POLICY}) WHERE p.roleName = r.name
-    MERGE (r)-[:HAS]->(p)
+    MERGE (r)-[:${RelationLabel.HAS}]->(p)
     `
   )
 
@@ -206,7 +208,7 @@ export async function setupGlueJobRoleRelations(
       `
       MATCH (gj:${NodeLabel.GLUE_JOB}) 
       MATCH (r:${NodeLabel.ROLE}) WHERE r.arn = gj.roleArn
-      MERGE (gj)-[:HAS]->(r)
+      MERGE (gj)-[:${RelationLabel.HAS}]->(r)
       `
     )
     .then(() => undefined)
@@ -261,7 +263,7 @@ export async function setupRoleAllowsAssumeRelations(
       `
       MATCH (s:${NodeLabel.AWS_SERVICE} {awsName: $serviceName})
       MATCH (r:${NodeLabel.ROLE}) WHERE r.arn = $roleArn
-      MERGE (s)-[:CAN_ASSUME]->(r)
+      MERGE (s)-[:${RelationLabel.CAN_ASSUME}]->(r)
       `,
       { roleArn, serviceName }
     )
@@ -271,7 +273,7 @@ export async function setupRoleAllowsAssumeRelations(
       `
       MATCH (s:${NodeLabel.AWS_ACCOUNT} {arn: $accountArn})
       MATCH (r:${NodeLabel.ROLE}) WHERE r.arn = $roleArn
-      MERGE (s)-[:CAN_ASSUME]->(r)
+      MERGE (s)-[:${RelationLabel.CAN_ASSUME}]->(r)
       `,
       { roleArn, accountArn }
     )
@@ -281,7 +283,7 @@ export async function setupRoleAllowsAssumeRelations(
       `
       MATCH (s:${NodeLabel.AWS_USER} {arn: $userArn})
       MATCH (r:${NodeLabel.ROLE}) WHERE r.arn = $roleArn
-      MERGE (s)-[:CAN_ASSUME]->(r)
+      MERGE (s)-[:${RelationLabel.CAN_ASSUME}]->(r)
       `,
       { roleArn, userArn }
     )
@@ -291,7 +293,7 @@ export async function setupRoleAllowsAssumeRelations(
       `
       MATCH (s:${NodeLabel.ROLE} {arn: $sourceRoleArn})
       MATCH (r:${NodeLabel.ROLE}) WHERE r.arn = $roleArn
-      MERGE (s)-[:CAN_ASSUME]->(r)
+      MERGE (s)-[:${RelationLabel.CAN_ASSUME}]->(r)
       `,
       { roleArn, sourceRoleArn }
     )

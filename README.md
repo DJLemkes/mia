@@ -66,20 +66,26 @@ Neo4j works with node labels. We use this to distinguish between AWS resources s
 CALL db.labels()
 ```
 
-To then show all nodes that have a label (e.g Role) execute:
+To then show all nodes that have a label (e.g AWSRole) execute:
 
 ```cypher
-MATCH (r:Role) RETURN r
+MATCH (r:AWSRole) RETURN r
 ```
 
 ### Schema visualization
 
 You can use the following queries to also view al relationship types: `CALL db.relationshipTypes()`. Besides that, you can run `CALL db.schema.visualization()` for a visualization of the node and relationships types currently active.
 
+### Show all IAM roles that have access to a Postgres table
+
+```cypher
+MATCH p=(:AWSRole)-[*]->(:PostgresTable) RETURN p
+```
+
 ### Check if two buckets are completely isolated from an IAM perspective
 
 ```cypher
-MATCH p=(b1:Bucket)<-[:HAS_PERMISSION]-(pv1:PolicyVersion)<-[*]-(r:Role)-[*]->(pv2:PolicyVersion)-[:HAS_PERMISSION]->(b2:Bucket)
+MATCH p=(b1:AWSBucket)<-[:HAS_PERMISSION]-(pv1:AWSPolicyVersion)<-[*]-(r:AWSRole)-[*]->(pv2:AWSPolicyVersion)-[:HAS_PERMISSION]->(b2:AWSBucket)
 WHERE b1.name = 'A' AND b2.name = 'B'
 AND pv1.isDefault AND pv2.isDefault
 RETURN p
@@ -94,7 +100,7 @@ Note the `regexAction` attribute here. We translate `s3:Get*` into `s3:Get.*` su
 ```cypher
 // This may take a while to display!
 WITH 's3:Put.*' AS regexAction
-MATCH p=(r:Role)-[*]->(pv:PolicyVersion)-[hp:HAS_PERMISSION]->(b:Bucket)
+MATCH p=(r:AWSRole)-[*]->(pv:AWSPolicyVersion)-[hp:HAS_PERMISSION]->(b:AWSBucket)
 WHERE pv.isDefault AND (regexAction =~ hp.regexAction OR hp.regexAction =~ regexAction)
 RETURN p
 ```
@@ -102,7 +108,7 @@ RETURN p
 Or a more refined version where you query which roles are able to reach `>n` buckets:
 
 ```cypher
-MATCH (r:Role)-[*]->(pv:PolicyVersion)-[*]->(b:Bucket)
+MATCH (r:AWSRole)-[*]->(pv:AWSPolicyVersion)-[*]->(b:AWSBucket)
 WITH r, COUNT(DISTINCT b) as bucketCount, collect(DISTINCT b.name) as buckets, pv
 WHERE pv.isDefault AND bucketCount > 4
 RETURN r.name, bucketCount, buckets
@@ -111,7 +117,7 @@ RETURN r.name, bucketCount, buckets
 ### Show which user can assume a role that provides access to a bucket
 
 ```cypher
-MATCH path=(a:AWSUser)-[:CAN_ASSUME]->(r:Role)-[:HAS]->(p:Policy)-[h:HAS]->(pv:PolicyVersion)-[hp:HAS_PERMISSION]->(b:Bucket)
+MATCH path=(a:AWSUser)-[:CAN_ASSUME]->(r:AWSRole)-[:HAS]->(p:Policy)-[h:HAS]->(pv:AWSPolicyVersion)-[hp:HAS_PERMISSION]->(b:AWSBucket)
 WHERE pv.isDefault
 RETURN path
 ```
@@ -123,17 +129,11 @@ RETURN path
 You can replace the label of `(a)` by any of the labels you've discovered above. So `(a:GlueJob)` would be another valid example.
 
 ```cypher
-MATCH p=(a:AWSService)-[*]->(pv:PolicyVersion)-[hp:HAS_PERMISSION]->(b:Bucket)
+MATCH p=(a:AWSService)-[*]->(pv:AWSPolicyVersion)-[hp:HAS_PERMISSION]->(b:AWSBucket)
 WHERE pv.isDefault
 AND b.name = 'bucket-name'
 AND pv.createdAt > datetime({year: 2020, month: 6, day: 1})
 RETURN p
-```
-
-### Show all IAM roles that have access to a Postgres table
-
-```cypher
-MATCH p=(:Role)-[*]->(:PostgresTable) RETURN p
 ```
 
 ![AWS Services that can assume a role that provides access to a bucket](./docs/images/aws_service_access_to_bucket.png)

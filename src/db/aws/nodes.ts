@@ -81,7 +81,8 @@ async function upsertInlineRolePolicies(
        {name: ip.inlinePolicyName, roleName: ip.roleName}
      )
      MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY_VERSION} 
-       {document: ip.PolicyDocument, isDefault: true, policyName: ip.inlinePolicyName}
+       {document: ip.PolicyDocument, isDefault: true, policyName: ip.inlinePolicyName,
+        versionId: 'InlineV0', versionNumber: 0}
      )
     `,
     {

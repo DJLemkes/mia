@@ -1,5 +1,6 @@
 import { NodeLabel as AWSNodeLabl } from "./aws/constants"
 import { NodeLabel as PostgresNodeLabl } from "./postgres/constants"
+import { RelationLabel } from "./constants"
 import { Transaction } from "neo4j-driver"
 import { PolicyDoc } from "./aws/policyDocUtils"
 import { isRight } from "fp-ts/lib/Either"
@@ -48,11 +49,11 @@ export async function setupAWSPostgresRelations(transaction: Transaction) {
   return transaction.run(
     `
     UNWIND $relations as r
-    MATCH (pv:PolicyVersion) WHERE ID(pv) = r.nodeId
+    MATCH (pv:${AWSNodeLabl.POLICY_VERSION}) WHERE ID(pv) = r.nodeId
     UNWIND r.postgresNodes as pgNode
     MATCH (pgr:${PostgresNodeLabl.ROLE})-[*]->(pdb:${PostgresNodeLabl.DATABASE})
     WHERE pgr.name = pgNode.dbUser AND pdb.name = pgNode.dbId AND pdb.rdsRegion = pgNode.region
-    MERGE (pv)-[:CAN_CONNECT_AS]->(pgr)
+    MERGE (pv)-[:${RelationLabel.CAN_CONNECT_AS}]->(pgr)
     `,
     { relations }
   )
