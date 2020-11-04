@@ -45,6 +45,22 @@ resource "aws_db_instance" "mia_test" {
   password                            = "mia_admin"
 }
 
+resource "aws_db_instance" "mia_test_two" {
+  identifier                          = "mia-two"
+  skip_final_snapshot                 = true
+  publicly_accessible                 = true
+  iam_database_authentication_enabled = true
+  vpc_security_group_ids              = [aws_security_group.allow_postgres_anywhere.id]
+  allocated_storage                   = 5
+  storage_type                        = "standard"
+  engine                              = "postgres"
+  engine_version                      = "12.4"
+  instance_class                      = "db.t2.micro"
+  name                                = "mia"
+  username                            = "mia_admin"
+  password                            = "mia_admin"
+}
+
 data "aws_iam_policy_document" "mia_test_db_login" {
   statement {
     effect    = "Allow"

@@ -1,15 +1,9 @@
 import postgres, { ConnectionInfo } from "../api/postgres"
-import neo4j from "neo4j-driver"
+import { Session } from "neo4j-driver"
 import dbNodes from "../db/postgres/nodes"
 import dbRelations from "../db/postgres/relations"
 
-export async function run(neo4jCredentials, pgConnectionInfo: ConnectionInfo) {
-  const driver = neo4j.driver(
-    neo4jCredentials.host,
-    neo4j.auth.basic(neo4jCredentials.user, neo4jCredentials.password)
-  )
-  const session = driver.session({ defaultAccessMode: neo4j.session.WRITE })
-  // await session.run("MATCH (a) DETACH DELETE a")
+export async function run(session: Session, pgConnectionInfo: ConnectionInfo) {
   const transaction = session.beginTransaction()
 
   const pgDatabases = [{ ...pgConnectionInfo, name: pgConnectionInfo.database }]
@@ -44,6 +38,4 @@ export async function run(neo4jCredentials, pgConnectionInfo: ConnectionInfo) {
   await dbRelations.setupRoleDatabaseRelations(transaction, roleTableGrants)
 
   await transaction.commit()
-  session.close()
-  driver.close()
 }

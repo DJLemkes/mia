@@ -1,6 +1,6 @@
 import AWS, { STS } from "aws-sdk"
 // import AWS from "aws-sdk"
-import neo4j from "neo4j-driver"
+import { Session } from "neo4j-driver"
 import ora from "ora"
 import { matchesAction, matchesResource } from "../db/aws/arnUtils"
 import { NodeLabel } from "../db/aws/constants"
@@ -34,17 +34,8 @@ const logUnsupported = (
     )
 }
 
-export async function run(awsCredentials, regions, dbCredentials) {
+export async function run(awsCredentials, regions, session: Session) {
   AWS.config.credentials = awsCredentials
-
-  const driver = neo4j.driver(
-    dbCredentials.host,
-    neo4j.auth.basic(dbCredentials.user, dbCredentials.password)
-  )
-
-  const session = driver.session({ defaultAccessMode: neo4j.session.WRITE })
-  // We are not able to handle updates correctly yet so we first wipe everything.
-  await session.run("MATCH (a) DETACH DELETE a")
   const transaction = session.beginTransaction()
 
   const roles = await iam.timedFetchRoles()
@@ -157,7 +148,5 @@ export async function run(awsCredentials, regions, dbCredentials) {
 
   const finishingSpinner = ora("Commiting work...").start()
   await transaction.commit()
-  session.close()
-  driver.close()
   finishingSpinner.succeed("Finished commiting work.")
 }

@@ -2,6 +2,7 @@ import fs from "fs"
 import AWS from "aws-sdk"
 import inquirer from "inquirer"
 import debug from "debug"
+import neo4j from "neo4j-driver"
 import { run as awsRun } from "./src/run/aws"
 import { run as postgresRun } from "./src/run/postgres"
 import { run as crossoverRun } from "./src/run/crossover"
@@ -13,6 +14,13 @@ const dbCredentials = {
   user: "neo4j",
   password: "neo4j",
 }
+
+const driver = neo4j.driver(
+  dbCredentials.host,
+  neo4j.auth.basic(dbCredentials.user, dbCredentials.password)
+)
+
+const session = driver.session({ defaultAccessMode: neo4j.session.WRITE })
 
 const argv = require("yargs")
   .alias("c", "config-file")
@@ -61,7 +69,7 @@ async function runAws(config: Config) {
       ])
       .then(async ({ proceed }) => {
         if (proceed) {
-          return awsRun(awsCredentials, regions, dbCredentials)
+          return awsRun(awsCredentials, regions, session)
         } else {
           return Promise.resolve("Skipping AWS")
         }
@@ -74,24 +82,25 @@ async function runPostgres(config: Config) {
     const pgInstances = config.postgres.instances
     const allDatabases = pgInstances.map(
       (info) =>
-        `${info.host}:${info.port}/${info.database} with user ${info.user}\n`
+        `${info.host}:${info.port}/${info.database} with user ${info.user}`
     )
 
     return inquirer
       .prompt([
         {
           type: "confirm",
-          message: `Going to visit the following Postgres databases:\n${allDatabases}`,
+          message: `Going to visit the following Postgres databases:\n${allDatabases.join(
+            "\n"
+          )}\n`,
           name: "proceed",
         },
       ])
       .then(async ({ proceed }) => {
         if (proceed) {
-          return Promise.all(
-            pgInstances.map(async (instanceInfo) =>
-              postgresRun(dbCredentials, instanceInfo)
-            )
-          )
+          for (const instance of pgInstances) {
+            await postgresRun(session, instance)
+          }
+          return Promise.resolve()
         } else {
           return Promise.resolve("Skipping Postgres databases")
         }
@@ -101,14 +110,19 @@ async function runPostgres(config: Config) {
 
 parseConfig(argv.c)
   .then(async (config) => {
+    await session.run("MATCH (a) DETACH DELETE a")
     await runAws(config)
     console.log("Finished processing AWS")
     await runPostgres(config)
     console.log("Finished processing Postgres")
-    await crossoverRun(dbCredentials)
+    await crossoverRun(session)
   })
   .then(() => process.exit(0))
   .catch((err) => {
     console.error(err)
     process.exit(1)
+  })
+  .finally(() => {
+    session.close()
+    driver.close()
   })
