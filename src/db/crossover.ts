@@ -22,6 +22,8 @@ export async function setupAWSPostgresRelations(transaction: Transaction) {
         `Policy with node ID ${nodeId} contains invalid Policy document`
       )
     }
+
+    // TODO: warn of unsupported NotAction and NotResource elements
     const postgresNodes = policyDoc.Statement.filter(
       (stmt) =>
         !!stmt.Action.find(

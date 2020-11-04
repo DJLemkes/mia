@@ -47,10 +47,12 @@ Not applicable. Scans S3 buckets for PII and sensitive data.
 
 1. Clone this repo and run `npm install`
 1. Run `docker-compose up`
-1. Run `node index.js` to run everything with default setting. This means that it will use the `default` profile from your `.aws/credentials` file. Besides that, it will only run for the `eu-central-1` region
-1. Run `node index.js -h` to see the other options. Most notably, you can point it to different credentials and fetch data from multiple regions in one go
-1. Visit Neo4J web interface at `http://localhost:7474/`. You can connect without auth.
-1. Run one of the suggested queries below
+1. Run `npm run build`
+1. Create a config file based on `mia-targets.example.json`
+1. Run `node dist/index.js -c <path/to/your/config>.json`
+1. (Run `node index.js -h` to see the other options)
+1. Visit Neo4J web interface at `http://localhost:7474/`. You can connect without auth
+1. Run one of the suggested queries below.
 
 ## Useful queries
 
@@ -126,6 +128,12 @@ WHERE pv.isDefault
 AND b.name = 'bucket-name'
 AND pv.createdAt > datetime({year: 2020, month: 6, day: 1})
 RETURN p
+```
+
+### Show all IAM roles that have access to a Postgres table
+
+```cypher
+MATCH p=(:Role)-[*]->(:PostgresTable) RETURN p
 ```
 
 ![AWS Services that can assume a role that provides access to a bucket](./docs/images/aws_service_access_to_bucket.png)

@@ -10,8 +10,8 @@ data "aws_vpc" "default" {
 }
 
 resource "aws_security_group" "allow_postgres_anywhere" {
-  name        = "allow_postgres_from_anywhere"
-  vpc_id      = data.aws_vpc.default.id
+  name   = "allow_postgres_from_anywhere"
+  vpc_id = data.aws_vpc.default.id
 
   ingress {
     description = "Postgres from anywhere"
@@ -30,19 +30,19 @@ resource "aws_security_group" "allow_postgres_anywhere" {
 }
 
 resource "aws_db_instance" "mia_test" {
-  identifier          = "mia"
-  skip_final_snapshot = true
-  publicly_accessible = true
+  identifier                          = "mia"
+  skip_final_snapshot                 = true
+  publicly_accessible                 = true
   iam_database_authentication_enabled = true
-  vpc_security_group_ids = [aws_security_group.allow_postgres_anywhere.id]
-  allocated_storage   = 5
-  storage_type        = "standard"
-  engine              = "postgres"
-  engine_version      = "12.4"
-  instance_class      = "db.t2.micro"
-  name                = "mia"
-  username            = "mia_admin"
-  password            = "mia_admin"
+  vpc_security_group_ids              = [aws_security_group.allow_postgres_anywhere.id]
+  allocated_storage                   = 5
+  storage_type                        = "standard"
+  engine                              = "postgres"
+  engine_version                      = "12.4"
+  instance_class                      = "db.t2.micro"
+  name                                = "mia"
+  username                            = "mia_admin"
+  password                            = "mia_admin"
 }
 
 data "aws_iam_policy_document" "mia_test_db_login" {
@@ -50,7 +50,7 @@ data "aws_iam_policy_document" "mia_test_db_login" {
     effect    = "Allow"
     actions   = ["rds-db:connect"]
     resources = ["arn:aws:rds-db:eu-central-1:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.mia_test.identifier}/mia_test_user"]
-    
+
   }
 }
 
@@ -60,14 +60,13 @@ data "aws_iam_policy_document" "allow_assume_all" {
     actions = ["sts:AssumeRole"]
     principals {
       identifiers = [data.aws_caller_identity.current.account_id]
-      //      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*"]
-      //      identifiers = ["*"]
-      type = "AWS"
+      type        = "AWS"
     }
   }
 }
 
 resource "aws_iam_role_policy" "mia_test_db_access" {
+  name   = "mia_test_db_access"
   policy = data.aws_iam_policy_document.mia_test_db_login.json
   role   = aws_iam_role.mia_test_db_access.id
 }

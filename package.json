@@ -5,8 +5,7 @@
   "main": "./index.js",
   "scripts": {
     "build": "npx tsc",
-    "watch-build": "npx tsc -w",
-    "mia": "npm run build && node dist/index.js"
+    "watch-build": "npx tsc -w"
   },
   "author": "",
   "license": "GPL-3.0-or-later",

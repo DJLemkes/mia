@@ -1,6 +1,6 @@
 {
   "aws": {
-    "cliProfile": "default",
+    "cliProfile": "This is the profile that will be taken from your AWS credentials file (~/.aws/credentials on Mac).",
     "regions": ["eu-central-1"]
   },
   "postgres": {
