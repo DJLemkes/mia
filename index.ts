@@ -1,10 +1,15 @@
 import fs from "fs"
-import AWS from "aws-sdk"
 import inquirer from "inquirer"
 import debug from "debug"
 import neo4j from "neo4j-driver"
-import { run as awsRun } from "./src/run/aws"
-import { run as postgresRun } from "./src/run/postgres"
+import {
+  confirmationQuestion as awsConfirmQuestion,
+  run as awsRun,
+} from "./src/run/aws"
+import {
+  confirmationQuestion as pgConfirmQuestion,
+  run as postgresRun,
+} from "./src/run/postgres"
 import { run as crossoverRun } from "./src/run/crossover"
 import { Config } from "./src/run/config"
 import { isRight } from "fp-ts/lib/Either"
@@ -51,70 +56,62 @@ async function parseConfig(fileLocation: string) {
 }
 
 async function runAws(config: Config) {
-  if (config.aws) {
-    const regions = config.aws.regions
-    const awsCredentials = new AWS.SharedIniFileCredentials({
-      profile: config.aws.cliProfile,
-    })
+  const confirmQuestion = awsConfirmQuestion(config)
 
+  if (confirmQuestion) {
     return inquirer
       .prompt([
         {
           type: "confirm",
-          message:
-            `Going to use access key Id ${awsCredentials.accessKeyId} ` +
-            `from profile ${config.aws.cliProfile} in region(s) ${regions}`,
+          message: confirmQuestion,
           name: "proceed",
         },
       ])
       .then(async ({ proceed }) => {
         if (proceed) {
-          return awsRun(awsCredentials, regions, session)
+          await awsRun(config, session)
+          return Promise.resolve("Finished processing AWS")
         } else {
           return Promise.resolve("Skipping AWS")
         }
       })
+  } else {
+    return Promise.resolve("No AWS config found")
   }
 }
 
 async function runPostgres(config: Config) {
-  if (config.postgres) {
-    const pgInstances = config.postgres.instances
-    const allDatabases = pgInstances.map(
-      (info) =>
-        `${info.host}:${info.port}/${info.database} with user ${info.user}`
-    )
+  const confirmQuestion = pgConfirmQuestion(config)
 
+  if (confirmQuestion) {
     return inquirer
       .prompt([
         {
           type: "confirm",
-          message: `Going to visit the following Postgres databases:\n${allDatabases.join(
-            "\n"
-          )}\n`,
+          message: confirmQuestion,
           name: "proceed",
         },
       ])
       .then(async ({ proceed }) => {
         if (proceed) {
-          for (const instance of pgInstances) {
-            await postgresRun(session, instance)
-          }
-          return Promise.resolve()
+          await postgresRun(session, config)
+          return Promise.resolve("Finished processing Postgres")
         } else {
           return Promise.resolve("Skipping Postgres databases")
         }
       })
+  } else {
+    return Promise.resolve("No Postgres config found")
   }
 }
 
 parseConfig(argv.c)
   .then(async (config) => {
     await session.run("MATCH (a) DETACH DELETE a")
-    await runAws(config)
-    console.log("Finished processing AWS")
-    await runPostgres(config)
-    console.log("Finished processing Postgres")
+    const awsMessage = await runAws(config)
+    console.log(awsMessage)
+    const pgMessage = await runPostgres(config)
+    console.log(pgMessage)
     await crossoverRun(session)
   })
   .then(() => process.exit(0))

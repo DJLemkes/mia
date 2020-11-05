@@ -14,6 +14,7 @@ import athena from "../api/aws/athena"
 import dbNodes from "../db/aws/nodes"
 import { filterUndefined } from "../utils"
 import dbRelations, { UnsupportedStatement } from "../db/aws/relations"
+import { Config } from "./config"
 
 const logUnsupported = (
   unsupported: UnsupportedStatement[],
@@ -34,7 +35,26 @@ const logUnsupported = (
     )
 }
 
-export async function run(awsCredentials, regions, session: Session) {
+export function confirmationQuestion(config: Config): string | undefined {
+  const regions = config.aws?.regions || []
+  const profile = config.aws?.cliProfile || "default"
+  const awsCredentials = new AWS.SharedIniFileCredentials({
+    profile: profile,
+  })
+
+  const question =
+    `Going to use access key Id ${awsCredentials.accessKeyId} ` +
+    `from profile ${profile} in region(s) ${regions}`
+
+  return config.aws ? question : undefined
+}
+
+export async function run(config: Config, session: Session) {
+  const regions = config.aws?.regions || []
+  const profile = config.aws?.cliProfile || "default"
+  const awsCredentials = new AWS.SharedIniFileCredentials({
+    profile: profile,
+  })
   AWS.config.credentials = awsCredentials
   const transaction = session.beginTransaction()
 
