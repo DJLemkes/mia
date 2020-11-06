@@ -1,7 +1,9 @@
 import { Transaction } from "neo4j-driver"
-import { NodeLabel } from "./constants"
+import { NodeLabel, dbUri as realDbUri } from "./constants"
 
-type DbPostgresDatabase = {
+const dbUri = (db: DbPostgresDatabase) => realDbUri(db.host, db.port, db.name)
+
+export type DbPostgresDatabase = {
   name: string
   host: string
   port: number
@@ -13,19 +15,20 @@ async function upsertDatabases(
   transaction: Transaction,
   databases: DbPostgresDatabase[]
 ) {
+  const _databases = databases.map((db) => ({ ...db, dbUri: dbUri(db) }))
   return transaction.run(
-    `UNWIND $databases as db 
+    `UNWIND $_databases as db 
      MERGE (:${NodeLabel.POSTGRES_RESOURCE}:${NodeLabel.DATABASE} 
-            {name: db.name, host: db.host, port: db.port,
+            {name: db.name, host: db.host, port: db.port, dbUri: db.dbUri, 
              rdsId: db.rdsId, rdsRegion: db.rdsRegion})
     `,
-    { databases }
+    { _databases }
   )
 }
 
 type DbPostgresSchema = {
   name: string
-  databaseName: string
+  database: DbPostgresDatabase
   owner: string
 }
 
@@ -33,12 +36,13 @@ async function upsertSchema(
   transaction: Transaction,
   schemas: DbPostgresSchema[]
 ) {
+  const _schemas = schemas.map((s) => ({ ...s, dbUri: dbUri(s.database) }))
   return transaction.run(
-    `UNWIND $schemas as s
+    `UNWIND $_schemas as s
      MERGE (:${NodeLabel.POSTGRES_RESOURCE}:${NodeLabel.SCHEMA} 
-            {name: s.name, databaseName: s.databaseName, owner: s.owner})
+            {name: s.name, owner: s.owner, dbUri: s.dbUri})
     `,
-    { schemas }
+    { _schemas }
   )
 }
 
@@ -46,26 +50,26 @@ type DbPostgresTable = {
   name: string
   owner: string
   schemaName: string
-  databaseName: string
+  database: DbPostgresDatabase
 }
 
 async function upsertTables(
   transaction: Transaction,
   tables: DbPostgresTable[]
 ) {
+  const _tables = tables.map((t) => ({ ...t, dbUri: dbUri(t.database) }))
   return transaction.run(
-    `UNWIND $tables as t
+    `UNWIND $_tables as t
      MERGE (:${NodeLabel.POSTGRES_RESOURCE}:${NodeLabel.TABLE} 
-            {name: t.name, databaseName: t.databaseName, 
-             schemaName: t.schemaName, owner: t.owner})
+            {name: t.name, schemaName: t.schemaName, owner: t.owner, dbUri: t.dbUri})
     `,
-    { tables }
+    { _tables }
   )
 }
 
 type DbPostgresRole = {
   name: string
-  databaseName: string
+  database: DbPostgresDatabase
   superUser: boolean
   inherit: boolean
   createRole: boolean
@@ -74,15 +78,15 @@ type DbPostgresRole = {
 }
 
 async function upsertRoles(transaction: Transaction, roles: DbPostgresRole[]) {
+  const _roles = roles.map((r) => ({ ...r, dbUri: dbUri(r.database) }))
   return transaction.run(
-    `UNWIND $roles as r
+    `UNWIND $_roles as r
      MERGE (:${NodeLabel.POSTGRES_RESOURCE}:${NodeLabel.ROLE} 
-            {name: r.name, databaseName: r.databaseName, 
-             superUser: r.superUser, inherit: r.inherit,
+            {name: r.name, superUser: r.superUser, inherit: r.inherit,
              createRole: r.createRole, createDatabase: r.createDatabase,
-             canLogin: r.canLogin})
+             canLogin: r.canLogin, dbUri: r.dbUri})
     `,
-    { roles }
+    { _roles }
   )
 }
 

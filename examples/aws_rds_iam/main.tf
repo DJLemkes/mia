@@ -65,7 +65,8 @@ data "aws_iam_policy_document" "mia_test_db_login" {
   statement {
     effect    = "Allow"
     actions   = ["rds-db:connect"]
-    resources = ["arn:aws:rds-db:eu-central-1:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.mia_test.identifier}/mia_test_user"]
+    resources = ["arn:aws:rds-db:eu-central-1:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.mia_test.identifier}/mia_test_user",
+    "arn:aws:rds-db:eu-central-1:${data.aws_caller_identity.current.account_id}:dbuser:${aws_db_instance.mia_test_two.identifier}/mia_test_user"]
 
   }
 }

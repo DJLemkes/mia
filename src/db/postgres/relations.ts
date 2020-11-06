@@ -1,11 +1,11 @@
 import { Transaction } from "neo4j-driver"
 import { RoleTableGrant } from "../../api/postgres"
-import { NodeLabel, RelationLabel } from "./constants"
+import { dbUri, NodeLabel, RelationLabel } from "./constants"
 
 async function setupSchemaDatabaseRelations(transaction: Transaction) {
   return transaction.run(
     `MATCH (db:${NodeLabel.DATABASE})
-    MATCH (s:${NodeLabel.SCHEMA}) WHERE s.databaseName = db.name
+    MATCH (s:${NodeLabel.SCHEMA}) WHERE s.dbUri = db.dbUri
     MERGE (s)-[:${RelationLabel.BELONGS_TO}]->(db)
     `
   )
@@ -15,7 +15,7 @@ async function setupTableSchemaRelations(transaction: Transaction) {
   return transaction.run(
     `MATCH (t:${NodeLabel.TABLE})
     MATCH (s:${NodeLabel.SCHEMA}) 
-    WHERE s.name = t.schemaName AND s.databaseName = t.databaseName
+    WHERE s.name = t.schemaName AND s.dbUri = t.dbUri
     MERGE (t)-[:${RelationLabel.BELONGS_TO}]->(s)
     `
   )
@@ -30,7 +30,7 @@ async function setupRoleRoleRelations(
       return memberOfs.map(async (memberOf) =>
         transaction.run(
           `MATCH (source:${NodeLabel.ROLE}) WHERE source.name = $role
-           MATCH (target:${NodeLabel.ROLE}) WHERE target.name = $memberOf AND source.databaseName = target.databaseName
+           MATCH (target:${NodeLabel.ROLE}) WHERE target.name = $memberOf AND source.dbUri = target.dbUri
            MERGE (source)-[:${RelationLabel.MEMBER_OF}]->(target)
             `,
           { role, memberOf }
@@ -43,31 +43,33 @@ async function setupRoleRoleRelations(
 
 async function setupRoleTableRelations(
   transaction: Transaction,
-  roleTableGrants: RoleTableGrant[]
+  roleTableGrants: RoleTableGrant[],
+  dbUri: string
 ) {
   return transaction.run(
     `
     UNWIND $roleTableGrants AS rtg
-    MATCH (r:${NodeLabel.ROLE}) WHERE r.name = rtg.roleName AND r.databaseName = rtg.databaseName
-    MATCH (t:${NodeLabel.TABLE}) WHERE t.name = rtg.tableName AND t.databaseName = rtg.databaseName AND t.schemaName = rtg.schemaName
+    MATCH (r:${NodeLabel.ROLE}) WHERE r.name = rtg.roleName AND r.dbUri = $dbUri
+    MATCH (t:${NodeLabel.TABLE}) WHERE t.name = rtg.tableName AND t.dbUri = $dbUri AND t.schemaName = rtg.schemaName
     MERGE (r)-[:${RelationLabel.HAS_GRANT} {name: rtg.grant}]->(t)
     `,
-    { roleTableGrants }
+    { roleTableGrants, dbUri }
   )
 }
 
 async function setupRoleDatabaseRelations(
   transaction: Transaction,
-  roleTableGrants: RoleTableGrant[]
+  roleTableGrants: RoleTableGrant[],
+  dbUri: string
 ) {
   return transaction.run(
     `
     UNWIND $roleTableGrants AS rtg
-    MATCH (r:${NodeLabel.ROLE}) WHERE r.name = rtg.roleName AND r.databaseName = rtg.databaseName
-    MATCH (db:${NodeLabel.DATABASE}) WHERE db.name = rtg.databaseName
+    MATCH (r:${NodeLabel.ROLE}) WHERE r.name = rtg.roleName AND r.dbUri = $dbUri
+    MATCH (db:${NodeLabel.DATABASE}) WHERE db.dbUri = $dbUri
     MERGE (r)-[:${RelationLabel.BELONGS_TO}]->(db)
     `,
-    { roleTableGrants }
+    { roleTableGrants, dbUri }
   )
 }
 

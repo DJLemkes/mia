@@ -4,6 +4,7 @@ import { RelationLabel } from "./constants"
 import { Transaction } from "neo4j-driver"
 import { PolicyDoc } from "./aws/policyDocUtils"
 import { isRight } from "fp-ts/lib/Either"
+import util from "util"
 
 export async function setupAWSPostgresRelations(transaction: Transaction) {
   const policyVersions = await transaction.run(
@@ -35,7 +36,7 @@ export async function setupAWSPostgresRelations(transaction: Transaction) {
       .filter((r) => r.service === "rds-db" && r.resource === "dbuser")
       .map((arn) => ({
         // TODO: account for '*' names
-        dbId: arn.resourceId.split("/")[0],
+        rdsId: arn.resourceId.split("/")[0],
         dbUser: arn.resourceId.split("/")[1],
         region: arn.region,
       }))
@@ -52,7 +53,7 @@ export async function setupAWSPostgresRelations(transaction: Transaction) {
     MATCH (pv:${AWSNodeLabl.POLICY_VERSION}) WHERE ID(pv) = r.nodeId
     UNWIND r.postgresNodes as pgNode
     MATCH (pgr:${PostgresNodeLabl.ROLE})-[*]->(pdb:${PostgresNodeLabl.DATABASE})
-    WHERE pgr.name = pgNode.dbUser AND pdb.name = pgNode.dbId AND pdb.rdsRegion = pgNode.region
+    WHERE pgr.name = pgNode.dbUser AND pdb.rdsId = pgNode.rdsId AND pdb.rdsRegion = pgNode.region
     MERGE (pv)-[:${RelationLabel.CAN_CONNECT_AS}]->(pgr)
     `,
     { relations }

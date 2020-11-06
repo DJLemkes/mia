@@ -11,3 +11,6 @@ export enum RelationLabel {
   MEMBER_OF = "MEMBER_OF",
   HAS_GRANT = "HAS_GRANT",
 }
+
+export const dbUri = (dbHost: string, dbPort: number, dbName: string) =>
+  `mia:postgres//${dbHost}:${dbPort}/${dbName}`
