@@ -1,47 +1,27 @@
 # Mia
 
-Get a birds-eye view of your AWS account authorization structure. Quickly answer questions like:
+Get a birds-eye view of your IAM authorization structure. Currently focused at AWS and Postgres. Quickly answer questions like:
 
 - Who or what as access to resource S3 bucket `X`?
+- Which AWS IAM Role can read from RDS Postgres table `mytable`?
+- Which AWS IAM policy statement contain non-empty `NotResource` statements?
 - What is the shortest path to read from `X` and write to `Y`?
 - Which role provides access most resources?
 - With whom or what should I collude to get access to data in `X`?
 
-Currently, this is very much AWS focused. More specifically, focused at detecting which resources have access to S3 buckets using IAM roles only.
-
 Mia uses various AWS API's to fetch your current account state. This is then ingested in a Neo4j database. You can then use the Neo4j web interface to run some of the suggested queries below.
 
-## Comparing to existing AWS products
+## What Mia is not
 
-We compared Mia to existing product listing [here](https://aws.amazon.com/products/security/#AWS_Security.2C_Identity.2C_.26_Compliance_services). Conclusion is that existing products are mainly focused at response and detection, assuming that your AWS setup is correct. Mia is focused at verifying this assumption from an IAM perspective.
+Primarily, Mia is a tool to visualize existing resources and their relations to your IAM model. This means that it's not a policy simulator as Mia is not able to reason about non-existing resources. Theoretically you could build such queries but that would mean you're basically building a policy simulator on top of Mia. So, use Mia to evaluate your IAM model and run some sanity checks. Don't be angry when something isn't right; better use that energy to help improve Mia :).
 
-### AWS Config (Detection)
+### AWS caveats
 
-Continuously monitor and assess AWS _resource configurations_. Easily track changes and relate them to CloudTrail events. Mia is Config on steroids though with a focus on inter-resource relationships instead of resources themselves. Config is time oriented whereas Mia is current state oriented first. Time orientation could be added.
+Beware that the following IAM statements aren't (yet) handled:
 
-### AWS Detective (Incident response)
-
-Consolidated views over Cloudtrail, VPC Flow Logs and GuardDuty findings to quickly come to the root cause of security findings or suspicious activities.
-
-### Amazon GuardDuty (Detection)
-
-"An intelligent threat detection service" aimed at monitoring access which are within configurations, strange in terms of behaviour (geo-location, atypical time of day, disabling audit functionality).
-
-It uses AWS CloudTrail (including S3), VPC Flow Logs, and DNS Logs.
-
-[Finding types](https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_finding-types-active.html)
-
-### IAM Access Analyzer (Identity & access management)
-
-Lists external access to resources in your account. More specifically, it lists access to resources within the zone of trust of your access analyzer. Multiple analyzers can be created per account.
-
-### AWS Security Hub (Detection)
-
-Aggregates over GuardDuty, Macie Inspector, Firewall manager, IAM Access Analyzer and more to help prioritize and handle alerts coming out of those systems.
-
-### Amazon Macie (Data protection)
-
-Not applicable. Scans S3 buckets for PII and sensitive data.
+- `NotResource`. Together with `NotAction` these could be implemented when building relations.
+- `NotAction`
+- `Condition`. This will be hard to implement in a graph setting. It would have to be considered at query-time as the outcome of a possible allow relation to a resource very much depends on the context of the action.
 
 ## Running
 
@@ -145,3 +125,35 @@ You probably won't need this, but it can be useful anyway :)
 ```cypher
 MATCH (a) DETACH DELETE a
 ```
+
+## Comparing to existing AWS products
+
+We compared Mia to existing product listing [here](https://aws.amazon.com/products/security/#AWS_Security.2C_Identity.2C_.26_Compliance_services). Conclusion is that existing products are mainly focused at response and detection, assuming that your AWS setup is correct. Mia is focused at verifying this assumption from an IAM perspective.
+
+### AWS Config (Detection)
+
+Continuously monitor and assess AWS _resource configurations_. Easily track changes and relate them to CloudTrail events. Mia is Config on steroids though with a focus on inter-resource relationships instead of resources themselves. Config is time oriented whereas Mia is current state oriented first. Time orientation could be added.
+
+### AWS Detective (Incident response)
+
+Consolidated views over Cloudtrail, VPC Flow Logs and GuardDuty findings to quickly come to the root cause of security findings or suspicious activities.
+
+### Amazon GuardDuty (Detection)
+
+"An intelligent threat detection service" aimed at monitoring access which are within configurations, strange in terms of behaviour (geo-location, atypical time of day, disabling audit functionality).
+
+It uses AWS CloudTrail (including S3), VPC Flow Logs, and DNS Logs.
+
+[Finding types](https://docs.aws.amazon.com/guardduty/latest/ug/guardduty_finding-types-active.html)
+
+### IAM Access Analyzer (Identity & access management)
+
+Lists external access to resources in your account. More specifically, it lists access to resources within the zone of trust of your access analyzer. Multiple analyzers can be created per account.
+
+### AWS Security Hub (Detection)
+
+Aggregates over GuardDuty, Macie Inspector, Firewall manager, IAM Access Analyzer and more to help prioritize and handle alerts coming out of those systems.
+
+### Amazon Macie (Data protection)
+
+Not applicable. Scans S3 buckets for PII and sensitive data.
