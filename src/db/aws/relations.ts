@@ -1,4 +1,4 @@
-import { cypherS3ArnRegex } from "./arnUtils"
+import { cypherS3ArnRegex, cypherActionRegex, cypherArnRegex } from "./arnUtils"
 import {
   allowedServices,
   allowedAWSAccounts,
@@ -8,13 +8,14 @@ import {
   Action,
   IAMArn,
   PolicyStatement,
+  ActionBlockType,
+  ResourceBlockType,
+  policyDocFromString,
 } from "./policyDocUtils"
 import { isRight } from "fp-ts/lib/Either"
 import { NodeLabel, RelationLabel } from "./constants"
-import { Transaction, Result } from "neo4j-driver"
-
-const cypherActionRegex = (awsAction: Action) =>
-  awsAction.fullAction.replace("*", ".*")
+import { Transaction, Result, Record, QueryResult } from "neo4j-driver"
+import { pascalToCamel } from "../../utils"
 
 export function setupPolicyPolicyVersionsRelations(
   transaction: Transaction
@@ -29,26 +30,63 @@ export function setupPolicyPolicyVersionsRelations(
     .then(() => undefined)
 }
 
+/**
+ * A statement may have an array of (Not)Action that is projected upon an
+ * array of (Not)Resource. This function flattens these into a list of
+ * all combinations that should be added as relations in the graph.
+ */
+const flattenedStatementProduct = (
+  policyArn: string,
+  policyName: string,
+  policyVersionId: string
+) => (statement: PolicyStatement) => {
+  const actionRecourseCombinations = Object.values(ActionBlockType).flatMap(
+    (actionType) =>
+      Object.values(ResourceBlockType).map((resourceType) => ({
+        actionType,
+        resourceType,
+      }))
+  )
+
+  return actionRecourseCombinations.flatMap(({ actionType, resourceType }) =>
+    statement[actionType].flatMap((action: Action) =>
+      statement[resourceType].map((resource: IAMArn) => ({
+        actionType,
+        resourceType,
+        policyArn,
+        policyName,
+        policyVersionId,
+        effect: statement.Effect,
+        actionService: action.service,
+        resourceService: resource.service,
+        action: action.fullAction,
+        resource: resource.fullArn,
+        actionRegex: cypherActionRegex(action),
+        resourceRegex: cypherArnRegex(resource),
+        conditionString:
+          Object.keys(statement.Condition).length > 0
+            ? JSON.stringify(statement.Condition)
+            : null,
+      }))
+    )
+  )
+}
+
 export type UnsupportedStatement = {
   policyVersionId: string
   policyName: string
-  statement: PolicyStatement
+  statement: PolicyStatement | undefined
 }
 
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_elements_resource.html
 export async function setupPolicyResourceRelations(
-  transaction: Transaction,
-  awsResource: NodeLabel,
-  resourceMatcher: (arn: IAMArn) => boolean,
-  actionMatcher: (arn: Action) => boolean
-): Promise<
-  {
-    notResource: UnsupportedStatement[]
-    notAction: UnsupportedStatement[]
-    condition: UnsupportedStatement[]
-  }[]
-> {
-  const policyVersions = await transaction.run(
+  transaction
+): Promise<{
+  notResource: UnsupportedStatement[]
+  notAction: UnsupportedStatement[]
+  condition: UnsupportedStatement[]
+}> {
+  const policyVersions: QueryResult = await transaction.run(
     `MATCH (pv:${NodeLabel.POLICY_VERSION}) 
     RETURN pv.versionId AS versionId, pv.policyArn AS policyArn, pv.document AS document, pv.policyName AS policyName`
   )
@@ -57,100 +95,53 @@ export async function setupPolicyResourceRelations(
     const policyArn: string = r.get("policyArn")
     const policyName: string = r.get("policyName")
     const policyVersionId: string = r.get("versionId")
-    const parsedPolicyDoc = PolicyDoc.decode(JSON.parse(r.get("document")))
-
-    let policyDoc: PolicyDoc
-    if (isRight(parsedPolicyDoc)) {
-      policyDoc = parsedPolicyDoc.right
-    } else {
-      throw new Error(`Policy ${policyName} contains invalid Policy document`)
-    }
-
-    const notResources = policyDoc.Statement.filter((statement) =>
-      statement.NotResource.find(resourceMatcher)
+    const policyDoc = policyDocFromString(policyName, r.get("document"))
+    const statementProduct = flattenedStatementProduct(
+      policyArn,
+      policyName,
+      policyVersionId
     )
 
-    const notActions = policyDoc.Statement.filter(
-      (statement) =>
-        (statement.NotResource.find(resourceMatcher) ||
-          statement.Resource.find(resourceMatcher)) &&
-        statement.NotAction.find(actionMatcher)
-    )
-
-    const conditions = policyDoc.Statement.filter(
-      (statement) =>
-        (statement.NotResource.find(resourceMatcher) ||
-          statement.Resource.find(resourceMatcher)) &&
-        Object.keys(statement.Condition).length > 0
-    )
-
-    const supportedStatements = policyDoc.Statement.flatMap((statement) =>
-      statement.Resource.filter(resourceMatcher).map((r) => {
-        const actions = statement.Action.filter(actionMatcher).map((a) => ({
-          action: a.fullAction,
-          regexAction: cypherActionRegex(a),
-        }))
-        return {
-          actions,
-          resource: r,
-          statementString: JSON.stringify(statement),
-          conditionString:
-            Object.keys(statement.Condition).length > 0
-              ? JSON.stringify(statement.Condition)
-              : null,
-          statement,
-          policyArn,
-          policyName,
-          resourceArnRegex: cypherS3ArnRegex(r),
-          policyDocumentVersionId: policyVersionId,
-          allow: statement.Effect === "Allow",
-        }
-      })
-    )
-
-    const statementsWithName = (statements) =>
-      statements.map((statement) => ({
-        policyVersionId,
-        policyName: policyArn || policyName,
-        statement,
-      }))
-
-    return {
-      supportedStatements,
-      unsupportedStatements: {
-        notResource: statementsWithName(notResources),
-        notAction: statementsWithName(notActions),
-        condition: statementsWithName(conditions),
-      },
-    }
+    return policyDoc.Statement.flatMap(statementProduct)
   })
 
-  await Promise.all(
-    statementsToProcess
-      .flatMap((stp) => stp.supportedStatements)
-      .map((stp) =>
-        transaction.run(
-          `
-          MATCH (pv:${
-            NodeLabel.POLICY_VERSION
-          }) WHERE (pv.versionId = $policyDocumentVersionId AND pv.policyArn = $policyArn) OR pv.policyName = $policyName
-          MATCH (b:${awsResource}) WHERE b.arn =~ $resourceArnRegex
-          UNWIND $actions AS a
-          MERGE (pv)-[hp:${
-            stp.allow
-              ? RelationLabel.HAS_PERMISSION
-              : RelationLabel.HAS_NO_PERMISSION
-          } {action: a.action, regexAction: a.regexAction, prefix: $resource.resource, 
-            policyStatement: $statementString}]-(b)
-          ON CREATE SET hp.condition = $conditionString
-          ON MATCH SET hp.condition = $conditionString
-          `, // because of the "Cannot merge relationship using null property value for condition" problem
-          stp
-        )
-      )
+  const supportedStatements = statementsToProcess.filter(
+    (stp) =>
+      stp.actionType === ActionBlockType.Action &&
+      stp.resourceType === ResourceBlockType.Resource
   )
 
-  return statementsToProcess.flatMap((stp) => stp.unsupportedStatements)
+  await transaction.run(
+    `
+    UNWIND $statementsToProcess AS stp
+    MATCH (pv:${NodeLabel.POLICY_VERSION}) WHERE (pv.versionId = stp.policyVersionId AND pv.policyArn = stp.policyArn) OR pv.policyName = stp.policyName
+    MATCH (b:${NodeLabel.AWS_RESOURCE}) WHERE b.arn =~ stp.resourceRegex AND b.service = stp.actionService
+    MERGE (pv)-[hp:${RelationLabel.HAS_PERMISSION} {action: stp.action, regexAction: stp.actionRegex}]-(b)
+    ON CREATE SET hp.condition = stp.conditionString
+    ON MATCH SET hp.condition = stp.conditionString
+    `, // because of the "Cannot merge relationship using null property value for condition" problem
+    {
+      statementsToProcess: supportedStatements,
+    }
+  )
+
+  const toUnsupportedStatement = (stp): UnsupportedStatement => ({
+    policyVersionId: stp.policyVersionId,
+    policyName: stp.policyName || stp.policyArn,
+    statement: undefined,
+  })
+
+  return {
+    notResource: statementsToProcess
+      .filter((stp) => stp.resourceType === ResourceBlockType.NotResource)
+      .map(toUnsupportedStatement),
+    notAction: statementsToProcess
+      .filter((stp) => stp.actionType === ActionBlockType.NotAction)
+      .map(toUnsupportedStatement),
+    condition: statementsToProcess
+      .filter((stp) => !!stp.conditionString)
+      .map(toUnsupportedStatement),
+  }
 }
 
 export function setupLambdaRoleRelations(

@@ -61,54 +61,54 @@ export async function run(config: Config, session: Session) {
   const roles = await iam.timedFetchRoles()
   await dbNodes.upsertRoles(transaction, roles)
 
-  const inlineRolePolicies = await iam.timedFetchInlineRolePolicies(
-    roles.map((r) => r.RoleName)
-  )
-  await dbNodes.upsertInlineRolePolicies(transaction, inlineRolePolicies)
+  // const inlineRolePolicies = await iam.timedFetchInlineRolePolicies(
+  //   roles.map((r) => r.RoleName)
+  // )
+  // await dbNodes.upsertInlineRolePolicies(transaction, inlineRolePolicies)
 
-  const policies = await iam.timedFetchPolicies()
-  await dbNodes.upsertPolicies(transaction, policies)
-  const allPolicyVersions = await iam.timedFetchPolicyVersions(
-    filterUndefined(policies.map((p) => p.Arn))
-  )
+  // const policies = await iam.timedFetchPolicies()
+  // await dbNodes.upsertPolicies(transaction, policies)
+  // const allPolicyVersions = await iam.timedFetchPolicyVersions(
+  //   filterUndefined(policies.map((p) => p.Arn))
+  // )
 
-  await Promise.all(
-    allPolicyVersions.map((pv) =>
-      dbNodes.upsertPolicyVersions(transaction, pv.Arn, pv.Versions)
-    )
-  )
+  // await Promise.all(
+  //   allPolicyVersions.map((pv) =>
+  //     dbNodes.upsertPolicyVersions(transaction, pv.Arn, pv.Versions)
+  //   )
+  // )
 
-  const regionLimit = pLimit(1)
-  await Promise.all(
-    regions.map((region) =>
-      regionLimit(async () => {
-        AWS.config.region = region
-        console.log(`Processing region ${AWS.config.region}...`)
+  // const regionLimit = pLimit(1)
+  // await Promise.all(
+  //   regions.map((region) =>
+  //     regionLimit(async () => {
+  //       AWS.config.region = region
+  //       console.log(`Processing region ${AWS.config.region}...`)
 
-        const awsAccountId = (await await (
-          await new STS().getCallerIdentity().promise()
-        ).Account) as string
+  //       const awsAccountId = (await await (
+  //         await new STS().getCallerIdentity().promise()
+  //       ).Account) as string
 
-        const buckets = await s3.fetchBuckets()
-        await dbNodes.upsertBuckets(transaction, buckets)
+  //       const buckets = await s3.fetchBuckets()
+  //       await dbNodes.upsertBuckets(transaction, buckets)
 
-        const lambdaFunctions = await lambda.timedFetchLambdas()
-        await dbNodes.upsertLambdas(transaction, lambdaFunctions)
+  //       const lambdaFunctions = await lambda.timedFetchLambdas()
+  //       await dbNodes.upsertLambdas(transaction, lambdaFunctions)
 
-        const glueJobs = await glue.timedFetchGlueJobs(awsAccountId)
-        await dbNodes.upsertGlueJobs(transaction, glueJobs)
+  //       const glueJobs = await glue.timedFetchGlueJobs(awsAccountId)
+  //       await dbNodes.upsertGlueJobs(transaction, glueJobs)
 
-        const glueDatabases = await glue.timedfetchGlueDatabases(awsAccountId)
-        await dbNodes.upsertGlueDatabases(transaction, glueDatabases)
+  //       const glueDatabases = await glue.timedfetchGlueDatabases(awsAccountId)
+  //       await dbNodes.upsertGlueDatabases(transaction, glueDatabases)
 
-        const glueTables = await glue.timedfetchGlueTables(awsAccountId)
-        await dbNodes.upsertGlueTables(transaction, glueTables)
+  //       const glueTables = await glue.timedfetchGlueTables(awsAccountId)
+  //       await dbNodes.upsertGlueTables(transaction, glueTables)
 
-        const athenaWorkgroups = await athena.timedFetchWorkGroups(awsAccountId)
-        await dbNodes.upsertAthenaWorkgroups(transaction, athenaWorkgroups)
-      })
-    )
-  )
+  //       const athenaWorkgroups = await athena.timedFetchWorkGroups(awsAccountId)
+  //       await dbNodes.upsertAthenaWorkgroups(transaction, athenaWorkgroups)
+  //     })
+  //   )
+  // )
 
   const relationsSpinner = ora("Setting up relations...").start()
   await dbRelations.setupRolePolicyRelations(transaction, roles)
@@ -116,52 +116,34 @@ export async function run(config: Config, session: Session) {
   await dbRelations.setupRoleAllowsAssumeRelations(transaction)
   await dbRelations.setupLambdaRoleRelations(transaction)
   await dbRelations.setupGlueJobRoleRelations(transaction)
-
-  const setupRelationResults = [
-    [NodeLabel.BUCKET, "s3"],
-    [NodeLabel.LAMBDA, "lambda"],
-    [NodeLabel.GLUE_JOB, "glue"],
-    [NodeLabel.GLUE_DATABASE, "glue"],
-    [NodeLabel.GLUE_TABLE, "glue"],
-    [NodeLabel.ATHENA_WORKGROUP, "athena"],
-  ].map(([nodeLabel, serviceName]) =>
-    dbRelations.setupPolicyResourceRelations(
-      transaction,
-      nodeLabel as NodeLabel,
-      matchesResource(serviceName),
-      matchesAction(serviceName)
-    )
+  const skippedStatements = await dbRelations.setupPolicyResourceRelations(
+    transaction
   )
 
-  const skippedStatements = (await Promise.all(setupRelationResults)).flat()
-
-  const iamNotResources = skippedStatements.flatMap((s) => s.notResource)
-  if (iamNotResources.length > 0) {
-    relationsSpinner.stopAndPersist({
-      symbol: warning,
-      text: `Skipping statement(s) in the following policies because the contain unsupported NotResource elements`,
-    })
-    logUnsupported(iamNotResources, relationsSpinner)
-  }
-
-  const iamNotActions = skippedStatements.flatMap((s) => s.notAction)
-  if (iamNotActions.length > 0) {
-    relationsSpinner.stopAndPersist({
-      symbol: warning,
-      text: `Skipping statement(s) in the following policies because the contain unsupported NotAction elements`,
-    })
-    logUnsupported(iamNotActions, relationsSpinner)
-  }
-
-  const iamConditionStatements = skippedStatements.flatMap((s) => s.condition)
-  if (iamConditionStatements.length > 0) {
+  if (skippedStatements.condition.length > 0) {
     relationsSpinner.stopAndPersist({
       symbol: warning,
       text:
         "IAM 'Condition' statements are not yet fully being processed. " +
         "We annotated relations with the 'Condition' statement when we encountered them in:",
     })
-    logUnsupported(iamConditionStatements, relationsSpinner)
+    logUnsupported(skippedStatements.condition, relationsSpinner)
+  }
+
+  if (skippedStatements.notAction.length > 0) {
+    relationsSpinner.stopAndPersist({
+      symbol: warning,
+      text: `Skipping statement(s) in the following policies because the contain unsupported NotAction elements`,
+    })
+    logUnsupported(skippedStatements.notAction, relationsSpinner)
+  }
+
+  if (skippedStatements.notResource.length > 0) {
+    relationsSpinner.stopAndPersist({
+      symbol: warning,
+      text: `Skipping statement(s) in the following policies because the contain unsupported NotResource elements`,
+    })
+    logUnsupported(skippedStatements.notResource, relationsSpinner)
   }
 
   relationsSpinner.succeed("Finished setting up relations")

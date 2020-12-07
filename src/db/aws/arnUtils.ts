@@ -19,5 +19,10 @@ export const isAWSAccount = (arn: string): boolean => arn.indexOf(":root") > -1
 
 export const isRole = (arn: string): boolean => arn.indexOf(":role") > -1
 
-export const baseArn = (region, accountId) =>
-  `arn:aws:athena:${region}:${accountId}:`
+export const policyName = (arn: string): string => arn.split("/")[1]
+
+export const cypherArnRegex = (s3Arn: IAMArn): string =>
+  s3Arn.fullArn.replace("*", ".*")
+
+export const cypherActionRegex = (awsAction: Action) =>
+  awsAction.fullAction.replace("*", ".*")

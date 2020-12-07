@@ -6,7 +6,9 @@
   "scripts": {
     "build": "npx tsc",
     "watch-build": "npx tsc -w",
-    "mia": "npm run build && node dist/index.js -c mia-targets.json "
+    "mia": "npm run build && node dist/index.js -c mia-targets.json ",
+    "test": "jest",
+    "test-watch": "jest --watch"
   },
   "author": "",
   "license": "GPL-3.0-or-later",

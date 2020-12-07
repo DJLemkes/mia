@@ -19,7 +19,7 @@ async function upsertPolicies(
     `UNWIND $policies as p MERGE
      (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY}:${NodeLabel.CUSTOMER_MANAGED_POLICY}
       {arn: p.Arn, name: p.PolicyName, id: p.PolicyId, createdAt: p.createdAt, 
-       updatedAt: p.updatedAt, description: p.Description
+       updatedAt: p.updatedAt, description: p.Description, service: 'iam'
       })`,
     {
       policies: policies.map((p) => ({
@@ -49,7 +49,7 @@ async function upsertPolicyVersions(
       `(:${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY_VERSION} ` +
       "{document: pv.document, policyArn: $policyArn, versionId: pv.VersionId, " +
       "versionNumber: pv.versionNumber, isDefault: pv.IsDefaultVersion, " +
-      "createdAt: pv.createdAt})",
+      "createdAt: pv.createdAt, service: 'iam'})",
     {
       policyVersions: policyVersions.map((pv) => ({
         createdAt: DateTime.fromStandardDate(pv.CreateDate),
@@ -78,11 +78,11 @@ async function upsertInlineRolePolicies(
     `UNWIND $inlinePolicies as ip
      MERGE (
        :${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY}:${NodeLabel.INLINE_POLICY} 
-       {name: ip.inlinePolicyName, roleName: ip.roleName}
+       {name: ip.inlinePolicyName, roleName: ip.roleName, service: 'iam'}
      )
      MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.POLICY_VERSION} 
        {document: ip.PolicyDocument, isDefault: true, policyName: ip.inlinePolicyName,
-        versionId: 'InlineV0', versionNumber: 0}
+        versionId: 'InlineV0', versionNumber: 0, service: 'iam'}
      )
     `,
     {
@@ -107,7 +107,8 @@ async function upsertRoles(transaction: Transaction, roles: DbIAMRole[]) {
     `UNWIND $roles as r 
      MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.ROLE} 
             {arn: r.Arn, name: r.RoleName, id: r.RoleId, createdAt: r.createdAt, 
-             assumeRolePolicyDocument: r.assumeRolePolicyDoc, description: r.Description
+             assumeRolePolicyDocument: r.assumeRolePolicyDoc, description: r.Description,
+             service: 'iam'
             })`,
     {
       roles: roles.map((r) => ({
@@ -128,7 +129,7 @@ type DbS3Bucket = {
 
 async function upsertBuckets(transaction: Transaction, buckets: DbS3Bucket[]) {
   return transaction.run(
-    `UNWIND $buckets AS b MERGE(:${NodeLabel.AWS_RESOURCE}:${NodeLabel.BUCKET} {arn: b.Arn, name: b.Name, createdAt: b.createdAt})`,
+    `UNWIND $buckets AS b MERGE(:${NodeLabel.AWS_RESOURCE}:${NodeLabel.BUCKET} {arn: b.Arn, name: b.Name, createdAt: b.createdAt, service: 's3'})`,
     {
       buckets: buckets.map((b) => ({
         createdAt: DateTime.fromStandardDate(b.CreationDate),
@@ -152,7 +153,8 @@ async function upsertLambdas(transaction: Transaction, lambdas: DbLambda[]) {
     `UNWIND $lambdas as l
      MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.LAMBDA}
       {name: l.FunctionName, arn: l.FunctionArn, modifiedAt: l.modifiedAt, 
-       roleArn: l.Role, revisionId: l.RevisionId, description: l.Description
+       roleArn: l.Role, revisionId: l.RevisionId, description: l.Description,
+       service: 'lambda'
       })`,
     {
       lambdas: lambdas.map((l) => ({
@@ -181,7 +183,8 @@ async function upsertGlueJobs(transaction: Transaction, jobs: DbGlueJob[]) {
     `UNWIND $jobs as j 
      MERGE (:${NodeLabel.AWS_RESOURCE}:${NodeLabel.GLUE_JOB} 
       {arn: j.JobArn, name: j.Name, createdAt: j.createdAt, 
-       updatedAt: j.updatedAt, roleArn: j.Role, description: j.Description
+       updatedAt: j.updatedAt, roleArn: j.Role, description: j.Description,
+       service: 'glue'
       })`,
     {
       jobs: jobs.map((j) => ({
@@ -209,7 +212,7 @@ async function upsertGlueDatabases(
   return await transaction.run(
     `UNWIND $databases as db
      MERGE (gdb:${NodeLabel.AWS_RESOURCE}:${NodeLabel.GLUE_DATABASE} 
-      {arn: db.Arn, name: db.Name, createdAt: db.createdAt})
+      {arn: db.Arn, name: db.Name, createdAt: db.createdAt, service: 'glue'})
      ON CREATE SET gdb.catalogId = db.CatalogId, gdb.description = db.Description
      ON MATCH SET gdb.catalogId = db.CatalogId, gdb.description = db.Description
       `,
@@ -238,7 +241,7 @@ async function upsertGlueTables(
   return await transaction.run(
     `UNWIND $tables as t
      MERGE (gt:${NodeLabel.AWS_RESOURCE}:${NodeLabel.GLUE_TABLE} 
-      {arn: t.Arn, name: t.Name, createdAt: t.createdAt, 
+      {arn: t.Arn, name: t.Name, createdAt: t.createdAt, service: 'glue',
        databaseArn: t.DatabaseArn, databaseName: t.DatabaseName})
      ON CREATE SET gt.description = t.Description
      ON MATCH SET gt.description = t.Description
@@ -267,7 +270,7 @@ async function upsertAthenaWorkgroups(
   return await transaction.run(
     `UNWIND $workgroups as wg
      MERGE (awg:${NodeLabel.AWS_RESOURCE}:${NodeLabel.ATHENA_WORKGROUP} 
-      {arn: wg.Arn, name: wg.Name, createdAt: wg.createdAt})
+      {arn: wg.Arn, name: wg.Name, createdAt: wg.createdAt, service: 'athena'})
     ON CREATE SET awg.description = wg.Description, awg.state = wg.State
     ON MATCH SET awg.description = wg.Description, awg.state = wg.State
     `,

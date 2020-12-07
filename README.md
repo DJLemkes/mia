@@ -20,8 +20,10 @@ Primarily, Mia is a tool to visualize existing resources and their relations to 
 Beware that the following IAM statements aren't (yet) handled:
 
 - `NotResource`. Together with `NotAction` these could be implemented when building relations.
-- `NotAction`
 - `Condition`. This will be hard to implement in a graph setting. It would have to be considered at query-time as the outcome of a possible allow relation to a resource very much depends on the context of the action.
+- Cross-account relations are currently not verified to be working.
+- Permissionboundaries aren't handled
+- [Policy variables](https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_variables.html) are not supported
 
 ## Running
 
@@ -29,7 +31,7 @@ Beware that the following IAM statements aren't (yet) handled:
 1. Run `docker-compose up`
 1. Run `npm run build`
 1. Create a config file based on `mia-targets.example.json`
-1. Run `node dist/index.js -c <path/to/your/config>.json`
+1. Run `node dist/index.js -c <path/to/your/config>.json`. Make sure that the user/role you're running Mia with has enough permissions on all systems to read and detect all resources!
 1. (Run `node index.js -h` to see the other options)
 1. Visit Neo4J web interface at `http://localhost:7474/`. You can connect without auth
 1. Run one of the suggested queries below.
@@ -62,13 +64,31 @@ You can use the following queries to also view al relationship types: `CALL db.r
 MATCH p=(:AWSRole)-[*]->(:PostgresTable) RETURN p
 ```
 
+Or when this query takes too long because you have many AWS resources:
+
+```cypher
+MATCH path=(:AWSRole)-[:HAS]-(p:AWSPolicy)-[:HAS]-(pv:AWSPolicyVersion)-[*]
+->(:PostgresTable) RETURN path
+```
+
 ### Check if two buckets are completely isolated from an IAM perspective
 
 ```cypher
 MATCH p=(b1:AWSBucket)<-[:HAS_PERMISSION]-(pv1:AWSPolicyVersion)<-[*]-(r:AWSRole)-[*]->(pv2:AWSPolicyVersion)-[:HAS_PERMISSION]->(b2:AWSBucket)
-WHERE b1.name = 'A' AND b2.name = 'B'
+WHERE b1.name = 'a' AND b2.name = 'b'
 AND pv1.isDefault AND pv2.isDefault
 RETURN p
+LIMIT 5
+```
+
+Or when this query takes too long because you have many AWS resources:
+
+```cypher
+MATCH p=(b1:AWSBucket)<-[:HAS_PERMISSION]-(pv1:AWSPolicyVersion)<-[:HAS]-(:AWSPolicy)<-[:HAS]-(r:AWSRole)-[:HAS]->(:AWSPolicy)-[:HAS]->(pv2:AWSPolicyVersion)-[:HAS_PERMISSION]->(b2:AWSBucket)
+WHERE b1.name = 'a' AND b2.name = 'b'
+AND pv1.isDefault AND pv2.isDefault
+RETURN p
+LIMIT 5
 ```
 
 ![Role with access to multiple buckets](./docs/images/role_multiple_buckets_access.png)
@@ -83,6 +103,7 @@ WITH 's3:Put.*' AS regexAction
 MATCH p=(r:AWSRole)-[*]->(pv:AWSPolicyVersion)-[hp:HAS_PERMISSION]->(b:AWSBucket)
 WHERE pv.isDefault AND (regexAction =~ hp.regexAction OR hp.regexAction =~ regexAction)
 RETURN p
+LIMIT 5
 ```
 
 Or a more refined version where you query which roles are able to reach `>n` buckets:
@@ -92,12 +113,13 @@ MATCH (r:AWSRole)-[*]->(pv:AWSPolicyVersion)-[*]->(b:AWSBucket)
 WITH r, COUNT(DISTINCT b) as bucketCount, collect(DISTINCT b.name) as buckets, pv
 WHERE pv.isDefault AND bucketCount > 4
 RETURN r.name, bucketCount, buckets
+LIMIT 5
 ```
 
 ### Show which user can assume a role that provides access to a bucket
 
 ```cypher
-MATCH path=(a:AWSUser)-[:CAN_ASSUME]->(r:AWSRole)-[:HAS]->(p:Policy)-[h:HAS]->(pv:AWSPolicyVersion)-[hp:HAS_PERMISSION]->(b:AWSBucket)
+MATCH path=(a:AWSUser)-[:CAN_ASSUME]->(r:AWSRole)-[:HAS]->(p:AWSPolicy)-[h:HAS]->(pv:AWSPolicyVersion)-[hp:HAS_PERMISSION]->(b:AWSBucket)
 WHERE pv.isDefault
 RETURN path
 ```
@@ -114,6 +136,7 @@ WHERE pv.isDefault
 AND b.name = 'bucket-name'
 AND pv.createdAt > datetime({year: 2020, month: 6, day: 1})
 RETURN p
+LIMIT 5
 ```
 
 ![AWS Services that can assume a role that provides access to a bucket](./docs/images/aws_service_access_to_bucket.png)

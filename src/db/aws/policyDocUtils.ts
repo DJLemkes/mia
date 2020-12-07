@@ -1,6 +1,7 @@
 import { isUser, isAWSAccount, isRole } from "./arnUtils"
 import * as t from "io-ts"
 import { withFallback } from "io-ts-types/lib/withFallback"
+import { isRight } from "fp-ts/lib/Either"
 
 // https://docs.aws.amazon.com/IAM/latest/UserGuide/reference_policies_grammar.html
 const IAMArray = <C extends t.Mixed>(codec: C) =>
@@ -33,7 +34,7 @@ type IAMArnType = {
   readonly fullArn: string
 }
 
-const IAMArn = new t.Type<IAMArnType, IAMArnType, unknown>(
+export const IAMArn = new t.Type<IAMArnType, IAMArnType, unknown>(
   "IAMArn",
   (input: unknown): input is IAMArnType => typeof input === "string",
   (input: unknown, context: t.Context) => {
@@ -116,13 +117,23 @@ const ConditionBlock = t.record(t.string, ConditionValue)
 
 export type ConditionBlock = t.TypeOf<typeof ConditionBlock>
 
+export enum ActionBlockType {
+  Action = "Action",
+  NotAction = "NotAction",
+}
+
+export enum ResourceBlockType {
+  Resource = "Resource",
+  NotResource = "NotResource",
+}
+
 const PolicyStatement = t.type(
   {
     Effect: t.readonly(Effect),
-    Resource: IAMArray(IAMArn),
-    NotResource: IAMArray(IAMArn),
-    Action: IAMArray(Action),
-    NotAction: IAMArray(Action),
+    [ResourceBlockType.Resource]: IAMArray(IAMArn),
+    [ResourceBlockType.NotResource]: IAMArray(IAMArn),
+    [ActionBlockType.Action]: IAMArray(Action),
+    [ActionBlockType.NotAction]: IAMArray(Action),
     Principal: withFallback(Principal, { Service: [], AWS: [] }),
     Condition: withFallback(ConditionBlock, {}),
   },
@@ -141,6 +152,15 @@ export const PolicyDoc = t.type({
 })
 
 export type PolicyDoc = t.TypeOf<typeof PolicyDoc>
+
+export const policyDocFromString = (policyName: string, doc: string) => {
+  const decoded = PolicyDoc.decode(JSON.parse(doc))
+  if (isRight(decoded)) {
+    return decoded.right
+  } else {
+    throw new Error(`Policy ${policyName} contains invalid Policy document`)
+  }
+}
 
 export const allowedPrincipals = (
   accessor: (principal: Principal) => string[]
